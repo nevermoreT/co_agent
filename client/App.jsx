@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import TaskPanel from './components/TaskPanel';
 import ChatPanel from './components/ChatPanel';
 import RightPanel from './components/RightPanel';
@@ -16,9 +16,9 @@ export default function App() {
   const [streamingAgentId, setStreamingAgentId] = useState(null);
   const streamingRef = useRef({});
 
-  const { agents, loading: agentsLoading, refetch: refetchAgents } = useAgents();
+  const { agents, refetch: refetchAgents } = useAgents();
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTasks();
-  const { ws, ready, runningAgentIds, lastError, clearError, sendStart, sendStop, sendText } = useWs({
+  const { ready, runningAgentIds, lastError, clearError, sendStart, sendStop, sendText } = useWs({
     onOutput(agentId, stream, data) {
       logger.log('[App] onOutput: agentId=%s stream=%s data.length=%d', agentId, stream, data?.length || 0);
       const str = typeof data === 'string' ? data : String(data ?? '');

@@ -13,7 +13,7 @@ export function useAgents() {
       if (!res.ok) throw new Error(res.statusText);
       const data = await res.json();
       setAgents(Array.isArray(data) ? data : []);
-    } catch (e) {
+    } catch {
       setAgents([]);
     } finally {
       setLoading(false);

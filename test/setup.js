@@ -3,7 +3,7 @@
  * 配置全局测试环境和 mock
  */
 import '@testing-library/jest-dom';
-import { vi } from 'vitest';
+import { vi, afterEach } from 'vitest';
 
 // Mock scrollIntoView
 Element.prototype.scrollIntoView = vi.fn();
@@ -37,7 +37,7 @@ class MockWebSocket {
     }, 10);
   }
   
-  send(data) {
+  send(_data) {
     if (this.readyState !== 1) {
       throw new Error('WebSocket is not open');
     }

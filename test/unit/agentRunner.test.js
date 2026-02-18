@@ -2,8 +2,7 @@
  * agentRunner.js 单元测试
  * 测试 Agent 进程管理功能
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createTestDb, createTestDbWithSeeds } from '../mocks/dbMock.js';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { MockChildProcess, simulateCliRun } from '../mocks/cliMock.js';
 
 // 由于 agentRunner 依赖 db.js，我们需要创建一个可测试的版本

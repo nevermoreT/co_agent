@@ -15,7 +15,7 @@ try {
   const require = createRequire(import.meta.url);
   const pty = require('node-pty');
   ptySpawn = pty.spawn;
-} catch (_) {
+} catch {
   // node-pty 未安装或原生模块加载失败时使用普通 spawn
 }
 
@@ -40,7 +40,9 @@ function parseNdjsonLine(line, onOutput) {
         }
       }
     }
-  } catch (_) {}
+  } catch {
+    // ignore JSON parse errors for incomplete/invalid lines
+  }
 }
 
 function processPtyData(data, stdoutBuf, onOutput) {

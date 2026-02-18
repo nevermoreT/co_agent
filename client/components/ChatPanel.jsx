@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useGlobalMessages } from '../hooks/useGlobalMessages';
 import './ChatPanel.css';
 
@@ -168,7 +168,9 @@ export default function ChatPanel({
           const data = await res.json();
           addMessage(data);
         }
-      } catch (_) {}
+      } catch {
+        // ignore fetch errors
+      }
 
       onStart(agent.id);
       onSendText(agent.id, textWithoutMention.trim());
@@ -189,7 +191,9 @@ export default function ChatPanel({
           const data = await res.json();
           addMessage(data);
         }
-      } catch (_) {}
+      } catch {
+        // ignore fetch errors
+      }
     }
   };
 

@@ -2,7 +2,7 @@
  * API 路由测试
  * 测试 agents、tasks、chats 路由
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // 由于路由依赖 db.js，我们需要创建一个模拟环境
 // 这里我们测试路由逻辑

@@ -2,7 +2,7 @@
  * minimal-opencode.js 单元测试
  * 测试 NDJSON 解析、ANSI 清理、工具调用处理等功能
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { OpencodeCliMock, createNdjsonOutput } from '../mocks/cliMock.js';
 
 describe('minimal-opencode.js 核心功能', () => {
@@ -68,7 +68,7 @@ describe('minimal-opencode.js 核心功能', () => {
         } else if (obj.type === 'permission_request') {
           onOutput('stderr', `[权限请求] ${obj.description || JSON.stringify(obj)}\n`);
         }
-      } catch (_) {
+      } catch {
         if (raw.includes('permission') || raw.includes('confirm') || raw.includes('[Y/n]') || raw.includes('?')) {
           onOutput('stderr', `[交互提示] ${raw}\n`);
         }

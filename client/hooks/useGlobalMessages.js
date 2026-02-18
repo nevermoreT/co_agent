@@ -13,7 +13,7 @@ export function useGlobalMessages() {
       if (!res.ok) throw new Error(res.statusText);
       const data = await res.json();
       setMessages(Array.isArray(data) ? data : []);
-    } catch (e) {
+    } catch {
       setMessages([]);
     } finally {
       setLoading(false);

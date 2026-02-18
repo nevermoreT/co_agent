@@ -13,7 +13,7 @@ export function useTasks() {
       if (!res.ok) throw new Error(res.statusText);
       const data = await res.json();
       setTasks(Array.isArray(data) ? data : []);
-    } catch (e) {
+    } catch {
       setTasks([]);
     } finally {
       setLoading(false);

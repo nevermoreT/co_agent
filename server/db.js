@@ -75,7 +75,9 @@ db.exec(`
 try {
   db.run('ALTER TABLE agents ADD COLUMN builtin_key TEXT');
   save();
-} catch (_) {}
+} catch {
+  // column already exists
+}
 
 const wrap = {
   prepare(sql) {

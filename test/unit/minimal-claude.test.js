@@ -2,15 +2,10 @@
  * minimal-claude.js 单元测试
  * 测试 NDJSON 解析、ANSI 清理、错误处理等功能
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { spawn } from 'child_process';
+import { describe, it, expect } from 'vitest';
 import {
   ClaudeCliMock,
-  MockChildProcess,
-  MockPtyProcess,
   createNdjsonOutput,
-  simulateCliRun,
-  simulatePtyCliRun,
 } from '../mocks/cliMock.js';
 
 // Mock child_process
@@ -96,7 +91,9 @@ describe('minimal-claude.js 核心功能', () => {
             }
           }
         }
-      } catch (_) {}
+      } catch {
+        // ignore JSON parse errors
+      }
     }
 
     it('应该解析 assistant 类型的消息', () => {

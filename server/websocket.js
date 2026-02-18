@@ -6,12 +6,12 @@ import logger from './logger.js';
 export function setupWebSocket(httpServer) {
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
-  wss.on('connection', (ws, req) => {
+  wss.on('connection', (ws) => {
     const send = (payload) => {
       if (ws.readyState !== 1) return; // 1 = OPEN
       try {
         ws.send(JSON.stringify(payload));
-      } catch (err) {
+      } catch {
         // 客户端已断开时 write 可能报 ECONNABORTED，忽略
       }
     };

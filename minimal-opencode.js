@@ -15,7 +15,7 @@ try {
   const require = createRequire(import.meta.url);
   const pty = require('node-pty');
   ptySpawn = pty.spawn;
-} catch (_) {
+} catch {
   // node-pty 未安装或原生模块加载失败时使用普通 spawn
 }
 
@@ -53,7 +53,7 @@ function parseNdjsonLine(line, onOutput) {
     } else if (obj.type === 'permission_request') {
       onOutput('stderr', `[权限请求] ${obj.description || JSON.stringify(obj)}\n`);
     }
-  } catch (_) {
+  } catch {
     if (raw.includes('permission') || raw.includes('confirm') || raw.includes('[Y/n]') || raw.includes('?')) {
       onOutput('stderr', `[交互提示] ${raw}\n`);
     }

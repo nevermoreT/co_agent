@@ -2,7 +2,7 @@
  * React Hooks 单元测试
  * 测试 useAgents、useTasks、useGlobalMessages 等 hooks
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useAgents } from '../../client/hooks/useAgents';
 import { useTasks } from '../../client/hooks/useTasks';
