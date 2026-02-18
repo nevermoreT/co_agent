@@ -4,7 +4,7 @@ Guidelines for agentic coding agents working in this repository.
 
 ## Project Overview
 
-Multi-agent collaboration platform built with Node.js (Express + WebSocket) backend and React (Vite) frontend. The system manages CLI-based agent processes and streams their output via WebSocket.
+Multi-agent collaboration platform built with Node.js (Express + WebSocket) backend and React (Vite) frontend. The system manages CLI-based agent processes and streams their output via WebSocket. Features a unified chat interface with @mention support for agent selection.
 
 ## Build & Development Commands
 
@@ -24,15 +24,39 @@ npm run client
 # Production build
 npm run build
 npm run server  # then access at http://localhost:3000
-
-# Run Claude CLI wrapper standalone (for testing)
-node minimal-claude.js "your question"
-
-# Run Opencode CLI wrapper standalone (for testing)
-node minimal-opencode.js "your question"
 ```
 
-**Note:** No formal test framework is configured. Manual testing via `npm run dev` is the primary method.
+## Testing Commands
+
+```bash
+# Run all tests once
+npm run test:run
+
+# Run tests in watch mode
+npm test
+
+# Run tests with coverage
+npm run test:coverage
+
+# Run a single test file
+npx vitest run test/unit/minimal-claude.test.js
+
+# Run tests matching a pattern
+npx vitest run -t "parseCommand"
+
+# Run tests in a specific directory
+npx vitest run test/hooks/
+```
+
+## Linting Commands
+
+```bash
+# Run ESLint
+npm run lint
+
+# Run ESLint with auto-fix
+npm run lint:fix
+```
 
 ## Code Style Guidelines
 
@@ -53,6 +77,9 @@ Order imports as follows, separated by blank lines:
 ```javascript
 import { spawn } from 'child_process';
 import path from 'path';
+
+import express from 'express';
+
 import db from '../db.js';
 import { runClaudeCli } from '../../minimal-claude.js';
 ```
@@ -67,7 +94,7 @@ import { runClaudeCli } from '../../minimal-claude.js';
 | Custom Hooks | use-prefix | `useAgents()`, `useWs()` |
 | Constants | SCREAMING_SNAKE_CASE | `MAX_AGENTS`, `API` |
 | CSS Classes | kebab-case | `chat-panel`, `chat-msg-content` |
-| Database Tables | snake_case | `chat_messages`, `cli_cwd` |
+| Database Tables | snake_case | `chat_messages`, `global_messages` |
 
 ### Export Style
 
@@ -88,11 +115,11 @@ import { runClaudeCli } from '../../minimal-claude.js';
 - Custom hooks in `client/hooks/` directory
 - Components in `client/components/` directory
 - Each component has a corresponding CSS file: `ChatPanel.jsx` → `ChatPanel.css`
+- No need to import React (React 17+ automatic JSX transform)
 
 ```javascript
 export default function ChatPanel({
   agents,
-  currentAgent,
   selectedAgentId,
   onSelectAgent,
 }) {
@@ -125,17 +152,31 @@ router.get('/:id', (req, res) => {
 - Always use try-catch for async operations
 - Return `{ error: string }` for API errors
 - Use appropriate HTTP status codes (400, 404, 500)
-- Log errors to console with context prefix
+- Use logger module instead of console directly:
+  ```javascript
+  import logger from './logger.js';
+  logger.log('[module] action: key=%s', key);
+  logger.error('[module] error:', err);
+  ```
 
-```javascript
-console.log('[agentRunner] run() failed: agentId=%s not found', agentId);
-```
+### Empty Catch Blocks
 
-### Logging
-
-- Prefix console logs with `[componentName]` for traceability
-- Use `console.log()` for info, `console.error()` for errors
-- Format: `console.log('[module] action: key=%s value=%o', key, value)`
+- Use descriptive comments or omit parameter entirely:
+  ```javascript
+  // Good
+  } catch {
+    // ignore fetch errors
+  }
+  
+  // Good (for intentionally ignored errors)
+  } catch {
+    // column already exists
+  }
+  
+  // Avoid
+  } catch (e) {}
+  } catch (_) {}
+  ```
 
 ### Async/Await
 
@@ -150,7 +191,7 @@ const refetch = useCallback(async () => {
     if (!res.ok) throw new Error(res.statusText);
     const data = await res.json();
     setAgents(Array.isArray(data) ? data : []);
-  } catch (e) {
+  } catch {
     setAgents([]);
   } finally {
     setLoading(false);
@@ -170,14 +211,30 @@ const refetch = useCallback(async () => {
 co_agent/
 ├── client/           # React frontend
 │   ├── components/   # UI components (.jsx + .css)
-│   └── hooks/        # Custom React hooks (.js)
+│   ├── hooks/        # Custom React hooks (.js)
+│   └── utils/        # Utility modules (logger.js)
 ├── server/           # Node.js backend
 │   ├── routes/       # Express routers
 │   └── services/     # Business logic
+├── test/             # Test files
+│   ├── api/          # API route tests
+│   ├── components/   # React component tests
+│   ├── hooks/        # Hook tests
+│   ├── mocks/        # Mock modules
+│   └── unit/         # Unit tests
 ├── data/             # SQLite database (auto-created)
 ├── minimal-claude.js # Claude CLI wrapper
 └── minimal-opencode.js # Opencode CLI wrapper
 ```
+
+## Architecture Notes
+
+### Unified Chat System
+
+- All messages stored in `global_messages` table
+- Use `@AgentName message` format to target specific agent
+- Agent name parsing supports spaces (e.g., `@Claude CLI hello`)
+- Messages without @ prefix are saved as regular messages
 
 ### WebSocket Message Protocol
 
@@ -205,3 +262,10 @@ Responses: `{ type: 'output'|'exit'|'error'|'started'|'stopped'|'status', ... }`
 - WebSocket path is `/ws`
 - Server port: 3000 (configurable via PORT env var)
 - Client dev server: 5173 (proxies `/api` and `/ws` to server)
+- Tests run single-threaded (`threads: false`) due to SQLite
+
+## Before Committing
+
+1. Run `npm run lint` and fix any issues
+2. Run `npm run test:run` and ensure all tests pass
+3. Run `npm run build` to verify production build works
