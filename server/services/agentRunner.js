@@ -156,7 +156,12 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit) {
     onExit && onExit(-1, 'agent not found or not opencode-cli');
     return false;
   }
-  logger.log('[agentRunner] runOpencodeCli() starting: agentId=%s prompt=%s', agentId, prompt.substring(0, 50) + '...');
+  
+  // 使用 agent 的 session_id（如果有）来保持会话上下文
+  const sessionId = agent.session_id || null;
+  logger.log('[agentRunner] runOpencodeCli() starting: agentId=%s prompt=%s sessionId=%s', 
+    agentId, prompt.substring(0, 50) + '...', sessionId || '(none)');
+  
   const { child } = runOpencodeCliImpl(prompt, {
     onOutput,
     onExit: (code, signal) => {
@@ -164,6 +169,15 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit) {
       runs.delete(key);
       onExit && onExit(code, signal);
     },
+    // 当检测到新的 session ID 时，保存到数据库
+    onSession: (newSessionId) => {
+      if (newSessionId && newSessionId !== sessionId) {
+        logger.log('[agentRunner] saving new session_id for agentId=%s: %s', agentId, newSessionId);
+        db.prepare('UPDATE agents SET session_id = ? WHERE id = ?').run(newSessionId, agentId);
+      }
+    },
+    sessionId,
+    continue: !sessionId, // 如果没有指定 sessionId，则使用 --continue
   });
   runs.set(key, { process: child });
   return true;

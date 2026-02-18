@@ -79,6 +79,13 @@ try {
   // column already exists
 }
 
+try {
+  db.run('ALTER TABLE agents ADD COLUMN session_id TEXT');
+  save();
+} catch {
+  // column already exists
+}
+
 const wrap = {
   prepare(sql) {
     const stmt = db.prepare(sql);

@@ -45,18 +45,27 @@ function stripAnsi(s) {
 /**
  * 解析 opencode NDJSON 行，提取文本内容
  * opencode 事件类型：
+ * - session: 会话信息，包含 session ID（用于保持上下文）
  * - step_start: 步骤开始
  * - text: 文本输出，part.text 包含实际文本
  * - tool_use: 工具调用，part.state.output 包含工具输出
  * - step_finish: 步骤结束
  * - permission_request: 权限请求（需要确认）
+ * 
+ * @param {string} line - NDJSON 行
+ * @param {Function} onOutput - 输出回调 (stream, data)
+ * @param {Function} onSession - 会话回调 (sessionId)
  */
-function parseNdjsonLine(line, onOutput) {
+function parseNdjsonLine(line, onOutput, onSession) {
   const raw = stripAnsi(line);
   if (!raw) return;
   try {
     const obj = JSON.parse(raw);
-    if (obj.type === 'text' && obj.part?.text) {
+    // 检测 session 事件，提取 session ID
+    if (obj.type === 'session' && obj.id) {
+      console.log('[minimal-opencode] detected session:', obj.id);
+      onSession && onSession(obj.id);
+    } else if (obj.type === 'text' && obj.part?.text) {
       onOutput('stdout', obj.part.text);
     } else if (obj.type === 'tool_use' && obj.part?.state?.output) {
       const toolName = obj.part.tool || 'tool';
@@ -72,11 +81,11 @@ function parseNdjsonLine(line, onOutput) {
   }
 }
 
-function processPtyData(data, stdoutBuf, onOutput) {
+function processPtyData(data, stdoutBuf, onOutput, onSession) {
   const s = stdoutBuf.current + data;
   const lines = s.split(/\r?\n/);
   stdoutBuf.current = lines.pop() ?? '';
-  for (const line of lines) parseNdjsonLine(line, onOutput);
+  for (const line of lines) parseNdjsonLine(line, onOutput, onSession);
 }
 
 /**
@@ -116,6 +125,7 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
  * @param {Object} options - 配置选项
  * @param {Function} options.onOutput - 输出回调 (stream, data)
  * @param {Function} options.onExit - 退出回调 (code, signal)
+ * @param {Function} [options.onSession] - 会话回调 (sessionId)，当检测到 session ID 时调用
  * @param {boolean} [options.continue=true] - 是否继续上一个会话（保持上下文）
  * @param {string} [options.sessionId] - 指定会话 ID（优先于 continue）
  * @param {string} [options.cwd] - 工作目录（确保会话在同一项目下）
@@ -124,12 +134,16 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
  * 1. sessionId 优先：如果提供了 sessionId，使用 --session <id> 指定具体会话
  * 2. continue 次之：如果没有 sessionId 但 continue=true，使用 --continue 继续最近的会话
  * 3. opencode 会在 ~/.local/share/opencode/ 下存储会话数据
- * 4. 可以通过 `opencode session list` 查看所有会话及其 ID
+ * 4. onSession 回调会在检测到 session ID 时触发，可用于保存 session ID
+ * 5. 可以通过 `opencode session list` 查看所有会话及其 ID
  * 
  * 使用示例：
  * ```javascript
- * // 继续最近的会话（默认行为）
- * runOpencodeCli('hello', { continue: true });
+ * // 继续最近的会话，并获取新的 session ID
+ * runOpencodeCli('hello', { 
+ *   continue: true,
+ *   onSession: (sessionId) => console.log('Session:', sessionId)
+ * });
  * 
  * // 指定具体的会话 ID
  * runOpencodeCli('hello', { sessionId: 'abc123' });
@@ -138,7 +152,7 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
  * runOpencodeCli('hello', { continue: false });
  * ```
  */
-export function runOpencodeCli(prompt, { onOutput, onExit, continue: shouldContinue = true, sessionId, cwd } = {}) {
+export function runOpencodeCli(prompt, { onOutput, onExit, onSession, continue: shouldContinue = true, sessionId, cwd } = {}) {
   const isWin = process.platform === 'win32';
   
   // 构建会话参数
@@ -165,10 +179,10 @@ export function runOpencodeCli(prompt, { onOutput, onExit, continue: shouldConti
     });
     const stdoutBuf = { current: '' };
     ptyProcess.on('data', (data) => {
-      processPtyData(data, stdoutBuf, onOutput);
+      processPtyData(data, stdoutBuf, onOutput, onSession);
     });
     ptyProcess.on('exit', (code, signal) => {
-      if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput);
+      if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
       onExit && onExit(code ?? -1, signal);
     });
     console.log('[minimal-opencode] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
@@ -187,10 +201,10 @@ export function runOpencodeCli(prompt, { onOutput, onExit, continue: shouldConti
     const s = stdoutBuf + chunk.toString();
     const lines = s.split(/\r?\n/);
     stdoutBuf = lines.pop() ?? '';
-    for (const line of lines) parseNdjsonLine(line, onOutput);
+    for (const line of lines) parseNdjsonLine(line, onOutput, onSession);
   });
   child.stdout.on('end', () => {
-    if (stdoutBuf) parseNdjsonLine(stdoutBuf, onOutput);
+    if (stdoutBuf) parseNdjsonLine(stdoutBuf, onOutput, onSession);
   });
   child.stderr.on('data', (chunk) => onOutput('stderr', chunk.toString()));
   child.on('error', (err) => {

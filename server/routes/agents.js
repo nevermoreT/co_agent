@@ -60,15 +60,43 @@ router.post('/', (req, res) => {
 
 router.patch('/:id', (req, res) => {
   try {
-    const { name, cli_command, cli_cwd } = req.body;
+    const { name, cli_command, cli_cwd, session_id } = req.body;
     const existing = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Agent not found' });
     const n = name !== undefined ? name : existing.name;
     const c = cli_command !== undefined ? cli_command : existing.cli_command;
     const w = cli_cwd !== undefined ? cli_cwd : existing.cli_cwd;
+    const s = session_id !== undefined ? session_id : existing.session_id;
     db.prepare(
-      'UPDATE agents SET name = ?, cli_command = ?, cli_cwd = ? WHERE id = ?'
-    ).run(n, c, w, req.params.id);
+      'UPDATE agents SET name = ?, cli_command = ?, cli_cwd = ?, session_id = ? WHERE id = ?'
+    ).run(n, c, w, s, req.params.id);
+    const row = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 设置 agent 的 session ID
+router.put('/:id/session', (req, res) => {
+  try {
+    const { session_id } = req.body;
+    const existing = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Agent not found' });
+    db.prepare('UPDATE agents SET session_id = ? WHERE id = ?').run(session_id || null, req.params.id);
+    const row = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 清除 agent 的 session ID（开始新会话）
+router.delete('/:id/session', (req, res) => {
+  try {
+    const existing = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Agent not found' });
+    db.prepare('UPDATE agents SET session_id = NULL WHERE id = ?').run(req.params.id);
     const row = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
     res.json(row);
   } catch (e) {
