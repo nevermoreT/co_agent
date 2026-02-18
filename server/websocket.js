@@ -1,0 +1,148 @@
+import { WebSocketServer } from 'ws';
+import * as agentRunner from './services/agentRunner.js';
+import db from './db.js';
+import logger from './logger.js';
+
+export function setupWebSocket(httpServer) {
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+
+  wss.on('connection', (ws, req) => {
+    const send = (payload) => {
+      if (ws.readyState !== 1) return; // 1 = OPEN
+      try {
+        ws.send(JSON.stringify(payload));
+      } catch (err) {
+        // 客户端已断开时 write 可能报 ECONNABORTED，忽略
+      }
+    };
+
+    ws.on('error', () => {});
+    ws.on('close', () => {});
+
+    ws.on('message', (raw) => {
+      let msg;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        send({ type: 'error', message: 'Invalid JSON' });
+        return;
+      }
+      const { action, agentId, text } = msg;
+      const id = agentId != null ? Number(agentId) : null;
+
+      if (action === 'start') {
+        if (id == null || Number.isNaN(id)) {
+          send({ type: 'error', message: 'agentId required' });
+          return;
+        }
+        logger.log('[websocket] start: agentId=%s', id);
+        const agent = db.prepare('SELECT builtin_key FROM agents WHERE id = ?').get(id);
+        if (agent && (agent.builtin_key === 'claude-cli' || agent.builtin_key === 'opencode-cli')) {
+          logger.log('[websocket] start: agentId=%s is %s, sending started without spawn', id, agent.builtin_key);
+          send({ type: 'started', agentId: id });
+          return;
+        }
+        const ok = agentRunner.run(
+          id,
+          (stream, data) => send({ type: 'output', agentId: id, stream, data }),
+          (code, signal) => send({ type: 'exit', agentId: id, code, signal })
+        );
+        if (!ok) {
+          logger.log('[websocket] start failed: agentId=%s', id);
+          send({ type: 'error', agentId: id, message: 'Start failed (already running or invalid)' });
+        } else {
+          logger.log('[websocket] start success: agentId=%s', id);
+          send({ type: 'started', agentId: id });
+        }
+        return;
+      }
+
+      if (action === 'send') {
+        if (id == null || Number.isNaN(id) || typeof text !== 'string') {
+          send({ type: 'error', message: 'agentId and text required' });
+          return;
+        }
+        logger.log('[websocket] send: agentId=%s text=%s', id, text.substring(0, 50) + '...');
+        const agent = db.prepare('SELECT builtin_key FROM agents WHERE id = ?').get(id);
+        if (agent && agent.builtin_key === 'claude-cli') {
+          logger.log('[websocket] send: agentId=%s is claude-cli, calling runClaudeCli', id);
+          try {
+            const onOutput = (stream, data) => {
+              if (stream === 'stdout' && typeof data === 'string' && data.length > 0) {
+                logger.log('[claude-cli] stdout chunk:', data.length, 'chars');
+              }
+              send({ type: 'output', agentId: id, stream, data });
+            };
+            const onExit = (code, signal) => {
+              logger.log('[claude-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
+              send({ type: 'exit', agentId: id, code, signal });
+            };
+            const ok = agentRunner.runClaudeCli(id, text, onOutput, onExit);
+            if (!ok) {
+              logger.log('[websocket] send: runClaudeCli failed for agentId=%s', id);
+              send({ type: 'error', agentId: id, message: 'Claude CLI start failed (already running?)' });
+            }
+          } catch (err) {
+            logger.error('[websocket] runClaudeCli error:', err);
+            send({ type: 'error', agentId: id, message: String(err?.message || err) });
+          }
+          return;
+        }
+        if (agent && agent.builtin_key === 'opencode-cli') {
+          logger.log('[websocket] send: agentId=%s is opencode-cli, calling runOpencodeCli', id);
+          try {
+            const onOutput = (stream, data) => {
+              if (stream === 'stdout' && typeof data === 'string' && data.length > 0) {
+                logger.log('[opencode-cli] stdout chunk:', data.length, 'chars');
+              }
+              send({ type: 'output', agentId: id, stream, data });
+            };
+            const onExit = (code, signal) => {
+              logger.log('[opencode-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
+              send({ type: 'exit', agentId: id, code, signal });
+            };
+            const ok = agentRunner.runOpencodeCli(id, text, onOutput, onExit);
+            if (!ok) {
+              logger.log('[websocket] send: runOpencodeCli failed for agentId=%s', id);
+              send({ type: 'error', agentId: id, message: 'Opencode CLI start failed (already running?)' });
+            }
+          } catch (err) {
+            logger.error('[websocket] runOpencodeCli error:', err);
+            send({ type: 'error', agentId: id, message: String(err?.message || err) });
+          }
+          return;
+        }
+        logger.log('[websocket] send: agentId=%s is regular agent, calling sendInput', id);
+        const ok = agentRunner.sendInput(id, text);
+        if (!ok) {
+          logger.log('[websocket] send: sendInput failed for agentId=%s', id);
+          send({ type: 'error', agentId: id, message: 'Agent not running or stdin closed' });
+        }
+        return;
+      }
+
+      if (action === 'stop') {
+        if (id == null || Number.isNaN(id)) {
+          send({ type: 'error', message: 'agentId required' });
+          return;
+        }
+        logger.log('[websocket] stop: agentId=%s', id);
+        const ok = agentRunner.stop(id);
+        logger.log('[websocket] stop result: agentId=%s ok=%s', id, ok);
+        send({ type: 'stopped', agentId: id, ok });
+        return;
+      }
+
+      if (action === 'status') {
+        const running = agentRunner.getRunningAgentIds();
+        send({ type: 'status', running });
+        return;
+      }
+
+      send({ type: 'error', message: 'Unknown action' });
+    });
+
+    const running = agentRunner.getRunningAgentIds();
+    send({ type: 'status', running });
+  });
+}

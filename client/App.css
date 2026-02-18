@@ -1,0 +1,74 @@
+.app {
+  display: grid;
+  grid-template-columns: 260px 1fr 300px;
+  height: 100vh;
+  min-width: 0;
+  background: var(--border-color);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+
+.panel-left {
+  background: var(--bg-secondary);
+}
+
+.panel-center {
+  background: var(--bg-primary);
+  position: relative;
+}
+
+.panel-right {
+  background: var(--bg-secondary);
+}
+
+.app-error {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  color: var(--accent-primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 10;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--accent-primary-light);
+  animation: fadeIn 0.2s ease;
+}
+
+.app-error button {
+  background: var(--accent-primary);
+  border: none;
+  color: white;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  font-weight: 500;
+  font-size: 0.75rem;
+  font-family: inherit;
+  transition: all var(--transition-fast);
+}
+
+.app-error button:hover {
+  background: #d14d3c;
+}
+
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+  .panel-left,
+  .panel-right {
+    display: none;
+  }
+}

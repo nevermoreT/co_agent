@@ -1,0 +1,74 @@
+import { Router } from 'express';
+import db from '../db.js';
+
+const router = Router();
+
+// Legacy: per-agent messages
+router.get('/agents/:id/messages', (req, res) => {
+  try {
+    const agentId = req.params.id;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    const offset = parseInt(req.query.offset, 10) || 0;
+    const list = db
+      .prepare(
+        'SELECT * FROM chat_messages WHERE agent_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?'
+      )
+      .all(agentId, limit, offset);
+    res.json(list);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/agents/:id/messages', (req, res) => {
+  try {
+    const agentId = req.params.id;
+    const { role, content, task_id } = req.body;
+    if (!role || content === undefined) {
+      return res.status(400).json({ error: 'role 和 content 必填' });
+    }
+    const run = db.prepare(
+      'INSERT INTO chat_messages (agent_id, role, content, task_id) VALUES (?, ?, ?, ?)'
+    );
+    const info = run.run(agentId, role, content || '', task_id || null);
+    const row = db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid);
+    res.status(201).json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Global messages (unified chat)
+router.get('/messages', (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+    const offset = parseInt(req.query.offset, 10) || 0;
+    const list = db
+      .prepare(
+        'SELECT * FROM global_messages ORDER BY created_at ASC LIMIT ? OFFSET ?'
+      )
+      .all(limit, offset);
+    res.json(list);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/messages', (req, res) => {
+  try {
+    const { role, content, agent_id, agent_name, task_id } = req.body;
+    if (!role || content === undefined) {
+      return res.status(400).json({ error: 'role 和 content 必填' });
+    }
+    const run = db.prepare(
+      'INSERT INTO global_messages (role, content, agent_id, agent_name, task_id) VALUES (?, ?, ?, ?, ?)'
+    );
+    const info = run.run(role, content || '', agent_id || null, agent_name || null, task_id || null);
+    const row = db.prepare('SELECT * FROM global_messages WHERE id = ?').get(info.lastInsertRowid);
+    res.status(201).json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+export default router;
