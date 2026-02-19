@@ -118,6 +118,10 @@ export function run(agentId, onOutput, onExit) {
 /**
  * 内置 Claude CLI：一问一答，每次 send 触发一次进程，流式回传解析后的 stdout。
  * 调用前由 websocket 确认 agent.builtin_key === 'claude-cli'。
+ * 
+ * 会话管理：
+ * - 使用 agent.session_id 来保持会话上下文
+ * - onSession 回调会在检测到新 session ID 时保存到数据库
  */
 export function runClaudeCli(agentId, prompt, onOutput, onExit) {
   const key = String(agentId);
@@ -131,7 +135,12 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit) {
     onExit && onExit(-1, 'agent not found or not claude-cli');
     return false;
   }
-  logger.log('[agentRunner] runClaudeCli() starting: agentId=%s prompt=%s', agentId, prompt.substring(0, 50) + '...');
+  
+  // 使用 agent 的 session_id（如果有）来保持会话上下文
+  const sessionId = agent.session_id || null;
+  logger.log('[agentRunner] runClaudeCli() starting: agentId=%s prompt=%s sessionId=%s', 
+    agentId, prompt.substring(0, 50) + '...', sessionId || '(none)');
+  
   const { child } = runClaudeCliImpl(prompt, {
     onOutput,
     onExit: (code, signal) => {
@@ -139,6 +148,15 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit) {
       runs.delete(key);
       onExit && onExit(code, signal);
     },
+    // 当检测到新的 session ID 时，保存到数据库
+    onSession: (newSessionId) => {
+      if (newSessionId && newSessionId !== sessionId) {
+        logger.log('[agentRunner] saving new session_id for agentId=%s: %s', agentId, newSessionId);
+        db.prepare('UPDATE agents SET session_id = ? WHERE id = ?').run(newSessionId, agentId);
+      }
+    },
+    sessionId,
+    continue: !sessionId, // 如果没有指定 sessionId，则使用 --continue
   });
   runs.set(key, { process: child });
   return true;
