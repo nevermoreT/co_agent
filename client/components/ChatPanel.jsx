@@ -213,7 +213,7 @@ export default function ChatPanel({
 
   return (
     <div className="chat-panel">
-      <header className="chat-header">
+      <header className={`chat-header ${currentConversation ? 'has-conversation' : ''}`}>
         <div className="chat-header-title">
           <span className="chat-title">
             {currentConversation ? currentConversation.title : '统一聊天'}
@@ -230,7 +230,14 @@ export default function ChatPanel({
         )}
       </header>
       <div className="chat-messages">
-        {(messages || []).filter(Boolean).map((m) => (
+        {!currentConversation && (
+          <div className="chat-empty-state">
+            <div className="chat-empty-icon">💬</div>
+            <div className="chat-empty-title">选择一个对话开始聊天</div>
+            <div className="chat-empty-desc">从左侧对话列表中选择一个对话，或创建新对话</div>
+          </div>
+        )}
+        {currentConversation && (messages || []).filter(Boolean).map((m) => (
           <div key={m.id} className={`chat-msg chat-msg-${m.role || 'assistant'}`}>
             <span className="chat-msg-role">
               {m.role === 'user' ? '用户' : `@${m.agent_name || 'Agent'}`}
@@ -238,13 +245,13 @@ export default function ChatPanel({
             <pre className="chat-msg-content">{m.content ?? ''}</pre>
           </div>
         ))}
-        {streamingContent && streamingAgent && (
+        {currentConversation && streamingContent && streamingAgent && (
           <div className="chat-msg chat-msg-assistant">
             <span className="chat-msg-role">@{streamingAgent.name}</span>
             <pre className="chat-msg-content chat-msg-streaming">{streamingContent}</pre>
           </div>
         )}
-        <div ref={messagesEndRef} />
+        {currentConversation && <div ref={messagesEndRef} />}
       </div>
       <div className="chat-input-area">
         <div className="chat-input-wrapper">
@@ -254,9 +261,13 @@ export default function ChatPanel({
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="输入消息，使用 @AgentName 调用 Agent..."
+            placeholder={
+              currentConversation 
+                ? "输入消息，使用 @AgentName 调用 Agent..." 
+                : "请先选择或创建一个对话"
+            }
             rows={2}
-            disabled={!wsReady}
+            disabled={!wsReady || !currentConversation}
           />
           {mentionState.active && filteredAgents.length > 0 && (
             <div className="mention-dropdown">

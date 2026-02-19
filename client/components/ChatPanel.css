@@ -25,7 +25,7 @@
 }
 
 .chat-title {
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -35,11 +35,17 @@
   min-width: 0;
 }
 
+/* Highlight when no conversation selected */
+.chat-header:not(.has-conversation) .chat-title {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .chat-conversation-group {
   font-size: 0.6875rem;
   font-weight: 600;
-  padding: 2px 6px;
-  border-radius: var(--radius-xs);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent-primary-light);
   color: var(--accent-primary);
   flex-shrink: 0;
@@ -47,6 +53,7 @@
   letter-spacing: 0.05em;
   font-family: 'IBM Plex Mono', monospace;
   white-space: nowrap;
+  border: 1px solid var(--accent-primary-light);
 }
   color: var(--text-primary);
 }
@@ -127,6 +134,38 @@
 
 .chat-msg-user .chat-msg-role {
   color: rgba(255, 255, 255, 0.7);
+}
+
+/* Empty state for conversations */
+.chat-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 32px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.chat-empty-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+  opacity: 0.6;
+}
+
+.chat-empty-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.chat-empty-desc {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  max-width: 320px;
 }
 
 .chat-msg-content {
