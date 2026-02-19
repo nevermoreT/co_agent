@@ -20,7 +20,7 @@ export default function ChatPanel({
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const prevStreamingRef = useRef('');
-  const { messages, refetch, addMessage } = useGlobalMessages();
+  const { messages, refetch, addMessage } = useGlobalMessages(selectedTaskId);
 
   const filteredAgents = mentionState.active
     ? agents.filter((a) => a.name.toLowerCase().includes(mentionState.query.toLowerCase()))

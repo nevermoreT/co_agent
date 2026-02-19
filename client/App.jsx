@@ -11,7 +11,7 @@ import './App.css';
 const API = '/api';
 
 export default function App() {
-  const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [streaming, setStreaming] = useState({});
   const [streamingAgentId, setStreamingAgentId] = useState(null);
   const streamingRef = useRef({});
@@ -45,6 +45,7 @@ export default function App() {
             content,
             agent_id: agentId,
             agent_name: agentName,
+            task_id: selectedConversationId,
           }),
         }).catch((err) => {
           logger.error('[App] failed to save assistant message:', err);
@@ -78,8 +79,8 @@ export default function App() {
           tasks={tasks}
           loading={tasksLoading}
           refetch={refetchTasks}
-          selectedTaskId={selectedTaskId}
-          onSelectTask={setSelectedTaskId}
+          selectedTaskId={selectedConversationId}
+          onSelectTask={setSelectedConversationId}
         />
       </aside>
       <main className="panel panel-center">
@@ -91,7 +92,7 @@ export default function App() {
         )}
         <ChatPanel
           agents={agents}
-          selectedTaskId={selectedTaskId}
+          selectedTaskId={selectedConversationId}
           wsReady={ready}
           runningAgentIds={runningAgentIds}
           streamingContent={getStreamingContent()}

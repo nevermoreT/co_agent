@@ -43,11 +43,20 @@ router.get('/messages', (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
     const offset = parseInt(req.query.offset, 10) || 0;
-    const list = db
-      .prepare(
-        'SELECT * FROM global_messages ORDER BY created_at ASC LIMIT ? OFFSET ?'
-      )
-      .all(limit, offset);
+    const conversationId = req.query.conversation_id || req.query.task_id;
+    
+    let query = 'SELECT * FROM global_messages';
+    let params = [];
+    
+    if (conversationId) {
+      query += ' WHERE task_id = ?';
+      params.push(conversationId);
+    }
+    
+    query += ' ORDER BY created_at ASC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+    
+    const list = db.prepare(query).all(...params);
     res.json(list);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -64,6 +73,12 @@ router.post('/messages', (req, res) => {
       'INSERT INTO global_messages (role, content, agent_id, agent_name, task_id) VALUES (?, ?, ?, ?, ?)'
     );
     const info = run.run(role, content || '', agent_id || null, agent_name || null, task_id || null);
+    
+    // Update last_activity_at for the conversation if task_id is provided
+    if (task_id) {
+      db.prepare('UPDATE tasks SET last_activity_at = datetime(\'now\') WHERE id = ?').run(task_id);
+    }
+    
     const row = db.prepare('SELECT * FROM global_messages WHERE id = ?').get(info.lastInsertRowid);
     res.status(201).json(row);
   } catch (e) {

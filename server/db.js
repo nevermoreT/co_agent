@@ -41,7 +41,9 @@ db.exec(`
     description TEXT DEFAULT '',
     status TEXT NOT NULL DEFAULT 'pending',
     created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
+    updated_at TEXT DEFAULT (datetime('now')),
+    last_activity_at TEXT DEFAULT (datetime('now')),
+    group_name TEXT
   );
 
   CREATE TABLE IF NOT EXISTS chat_messages (
@@ -81,6 +83,20 @@ try {
 
 try {
   db.run('ALTER TABLE agents ADD COLUMN session_id TEXT');
+  save();
+} catch {
+  // column already exists
+}
+
+try {
+  db.run('ALTER TABLE tasks ADD COLUMN last_activity_at TEXT');
+  save();
+} catch {
+  // column already exists
+}
+
+try {
+  db.run('ALTER TABLE tasks ADD COLUMN group_name TEXT');
   save();
 } catch {
   // column already exists

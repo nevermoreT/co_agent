@@ -1,20 +1,21 @@
 import { useState } from 'react';
+import { formatRelativeTime } from '../utils/timeUtils.js';
 import './TaskPanel.css';
 
 const API = '/api';
 
 export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onSelectTask }) {
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ title: '', description: '', status: 'pending' });
+  const [form, setForm] = useState({ title: '', description: '', status: 'pending', group_name: '' });
 
   const openNew = () => {
     setEditing('new');
-    setForm({ title: '', description: '', status: 'pending' });
+    setForm({ title: '', description: '', status: 'pending', group_name: '' });
   };
 
   const openEdit = (t) => {
     setEditing(t.id);
-    setForm({ title: t.title, description: t.description || '', status: t.status });
+    setForm({ title: t.title, description: t.description || '', status: t.status, group_name: t.group_name || '' });
   };
 
   const closeEdit = () => {
@@ -67,9 +68,9 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
   return (
     <div className="task-panel">
       <header className="task-panel-header">
-        <h2>任务</h2>
+        <h2>对话</h2>
         <button type="button" className="btn btn-primary" onClick={openNew}>
-          新建
+          新建对话
         </button>
       </header>
       {loading ? (
@@ -84,7 +85,8 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
             >
               <div className="task-item-main">
                 <span className="task-title">{t.title}</span>
-                <span className={`task-status task-status-${t.status}`}>{t.status}</span>
+                {t.group_name && <span className="task-group">{t.group_name}</span>}
+                <span className="task-time">{formatRelativeTime(t.last_activity_at)}</span>
               </div>
               <div className="task-item-actions">
                 <button type="button" className="btn btn-sm" onClick={(e) => { e.stopPropagation(); openEdit(t); }}>
@@ -113,29 +115,26 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
       {editing && (
         <div className="task-modal">
           <div className="task-modal-content">
-            <h3>{editing === 'new' ? '新建任务' : '编辑任务'}</h3>
+            <h3>{editing === 'new' ? '新建对话' : '编辑对话'}</h3>
             <label>标题</label>
             <input
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-              placeholder="任务标题"
+              placeholder="对话标题"
             />
-            <label>描述</label>
+            <label>分组（可选）</label>
+            <input
+              value={form.group_name}
+              onChange={(e) => setForm((f) => ({ ...f, group_name: e.target.value }))}
+              placeholder="如：工作、学习、项目"
+            />
+            <label>描述（可选）</label>
             <textarea
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              placeholder="可选"
+              placeholder="对话描述或备注"
               rows={3}
             />
-            <label>状态</label>
-            <select
-              value={form.status}
-              onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-            >
-              <option value="pending">待办</option>
-              <option value="doing">进行中</option>
-              <option value="done">已完成</option>
-            </select>
             <div className="task-modal-actions">
               <button type="button" className="btn" onClick={closeEdit}>
                 取消
