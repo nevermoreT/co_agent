@@ -14,6 +14,7 @@ export default function ChatPanel({
   onStart,
   onStop,
   onSendText,
+  currentConversation,
 }) {
   const [input, setInput] = useState('');
   const [mentionState, setMentionState] = useState({ active: false, query: '', start: 0, selectedIndex: 0 });
@@ -213,7 +214,14 @@ export default function ChatPanel({
   return (
     <div className="chat-panel">
       <header className="chat-header">
-        <span className="chat-title">统一聊天</span>
+        <div className="chat-header-title">
+          <span className="chat-title">
+            {currentConversation ? currentConversation.title : '统一聊天'}
+          </span>
+          {currentConversation?.group_name && (
+            <span className="chat-conversation-group">{currentConversation.group_name}</span>
+          )}
+        </div>
         {!wsReady && <span className="chat-ws-badge">连接中...</span>}
         {wsReady && runningAgentIds.length > 0 && (
           <span className="chat-ws-badge running">

@@ -18,6 +18,9 @@ export default function App() {
 
   const { agents, refetch: refetchAgents } = useAgents();
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTasks();
+
+  // Get current conversation object
+  const currentConversation = tasks.find(t => t.id === selectedConversationId);
   const { ready, runningAgentIds, lastError, clearError, sendStart, sendStop, sendText } = useWs({
     onOutput(agentId, stream, data) {
       logger.log('[App] onOutput: agentId=%s stream=%s data.length=%d', agentId, stream, data?.length || 0);
@@ -100,6 +103,7 @@ export default function App() {
           onStart={sendStart}
           onStop={sendStop}
           onSendText={sendText}
+          currentConversation={currentConversation}
         />
       </main>
       <aside className="panel panel-right">
