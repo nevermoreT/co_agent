@@ -55,8 +55,6 @@
   white-space: nowrap;
   border: 1px solid var(--accent-primary-light);
 }
-  color: var(--text-primary);
-}
 
 .chat-ws-badge {
   font-size: 0.6875rem;

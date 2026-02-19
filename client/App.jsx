@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import TaskPanel from './components/TaskPanel';
 import ChatPanel from './components/ChatPanel';
 import RightPanel from './components/RightPanel';
@@ -9,6 +9,7 @@ import logger from './utils/logger';
 import './App.css';
 
 const API = '/api';
+const DEFAULT_CONVERSATION_TITLE = '创世碎碎念';
 
 export default function App() {
   const [selectedConversationId, setSelectedConversationId] = useState(null);
@@ -18,6 +19,18 @@ export default function App() {
 
   const { agents, refetch: refetchAgents } = useAgents();
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTasks();
+
+  // 默认选中"创世碎碎念"对话
+  useEffect(() => {
+    if (!tasksLoading && tasks.length > 0 && !selectedConversationId) {
+      const defaultConv = tasks.find(t => t.title === DEFAULT_CONVERSATION_TITLE);
+      if (defaultConv) {
+        setSelectedConversationId(defaultConv.id);
+      } else if (tasks.length > 0) {
+        setSelectedConversationId(tasks[0].id);
+      }
+    }
+  }, [tasks, tasksLoading, selectedConversationId]);
 
   // Get current conversation object
   const currentConversation = tasks.find(t => t.id === selectedConversationId);

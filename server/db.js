@@ -164,4 +164,14 @@ wrap.prepare.bind(wrap);
   }
 })();
 
+// 创建默认对话"创世碎碎念"
+(function seedDefaultConversation() {
+  const defaultConv = wrap.prepare('SELECT id FROM tasks WHERE title = ?').get('创世碎碎念');
+  if (!defaultConv) {
+    wrap.prepare(
+      'INSERT INTO tasks (title, description, status, group_name) VALUES (?, ?, ?, ?)'
+    ).run('创世碎碎念', '默认对话，记录所有碎碎念', 'doing', '默认');
+  }
+})();
+
 export default wrap;
