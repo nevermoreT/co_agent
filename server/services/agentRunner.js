@@ -138,6 +138,8 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) 
   }
   
   const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
+  logger.log('[agentRunner] memoryContext: agentId=%s convId=%s len=%d context=%s', 
+    agentId, conversationId, memoryContext.length, memoryContext.substring(0, 100));
   const enrichedPrompt = memoryContext 
     ? `${memoryContext}\n---\n用户请求：${prompt}`
     : prompt;
@@ -180,6 +182,8 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId
   }
   
   const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
+  logger.log('[agentRunner] memoryContext: agentId=%s convId=%s len=%d context=%s', 
+    agentId, conversationId, memoryContext.length, memoryContext.substring(0, 100));
   const enrichedPrompt = memoryContext 
     ? `${memoryContext}\n---\n用户请求：${prompt}`
     : prompt;
