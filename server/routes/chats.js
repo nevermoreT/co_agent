@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import db from '../db.js';
+import * as memoryManager from '../services/memoryManager.js';
 
 const router = Router();
 
@@ -73,13 +74,25 @@ router.post('/messages', (req, res) => {
       'INSERT INTO global_messages (role, content, agent_id, agent_name, task_id) VALUES (?, ?, ?, ?, ?)'
     );
     const info = run.run(role, content || '', agent_id || null, agent_name || null, task_id || null);
-    
-    // Update last_activity_at for the conversation if task_id is provided
+
     if (task_id) {
       db.prepare('UPDATE tasks SET last_activity_at = datetime(\'now\') WHERE id = ?').run(task_id);
     }
-    
+
     const row = db.prepare('SELECT * FROM global_messages WHERE id = ?').get(info.lastInsertRowid);
+
+    if (content && content.trim()) {
+      memoryManager.recordEvent({
+        eventType: 'conversation',
+        sourceAgentId: agent_id,
+        sourceAgentName: agent_name || (role === 'user' ? 'User' : 'Unknown'),
+        conversationId: task_id,
+        title: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
+        content: content,
+        importance: role === 'user' ? 6 : 5,
+      });
+    }
+
     res.status(201).json(row);
   } catch (e) {
     res.status(500).json({ error: e.message });

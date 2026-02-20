@@ -4,6 +4,7 @@ import db from '../db.js';
 import logger from '../logger.js';
 import { runClaudeCli as runClaudeCliImpl } from '../../minimal-claude.js';
 import { runOpencodeCli as runOpencodeCliImpl } from '../../minimal-opencode.js';
+import * as memoryManager from './memoryManager.js';
 
 const runs = new Map();
 
@@ -123,7 +124,7 @@ export function run(agentId, onOutput, onExit) {
  * - 使用 agent.session_id 来保持会话上下文
  * - onSession 回调会在检测到新 session ID 时保存到数据库
  */
-export function runClaudeCli(agentId, prompt, onOutput, onExit) {
+export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) {
   const key = String(agentId);
   if (runs.has(key)) {
     logger.log('[agentRunner] runClaudeCli() blocked: agentId=%s already running', agentId);
@@ -136,19 +137,24 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit) {
     return false;
   }
   
-  // 使用 agent 的 session_id（如果有）来保持会话上下文
+  const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
+  const enrichedPrompt = `${memoryContext}
+
+---
+
+用户请求：${prompt}`;
+  
   const sessionId = agent.session_id || null;
   logger.log('[agentRunner] runClaudeCli() starting: agentId=%s prompt=%s sessionId=%s', 
     agentId, prompt.substring(0, 50) + '...', sessionId || '(none)');
   
-  const { child } = runClaudeCliImpl(prompt, {
+  const { child } = runClaudeCliImpl(enrichedPrompt, {
     onOutput,
     onExit: (code, signal) => {
       logger.log('[agentRunner] runClaudeCli() exit: agentId=%s code=%s signal=%s', agentId, code, signal);
       runs.delete(key);
       onExit && onExit(code, signal);
     },
-    // 当检测到新的 session ID 时，保存到数据库
     onSession: (newSessionId) => {
       if (newSessionId && newSessionId !== sessionId) {
         logger.log('[agentRunner] saving new session_id for agentId=%s: %s', agentId, newSessionId);
@@ -156,13 +162,13 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit) {
       }
     },
     sessionId,
-    continue: !sessionId, // 如果没有指定 sessionId，则使用 --continue
+    continue: !sessionId,
   });
   runs.set(key, { process: child });
   return true;
 }
 
-export function runOpencodeCli(agentId, prompt, onOutput, onExit) {
+export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId) {
   const key = String(agentId);
   if (runs.has(key)) {
     logger.log('[agentRunner] runOpencodeCli() blocked: agentId=%s already running', agentId);
@@ -175,19 +181,24 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit) {
     return false;
   }
   
-  // 使用 agent 的 session_id（如果有）来保持会话上下文
+  const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
+  const enrichedPrompt = `${memoryContext}
+
+---
+
+用户请求：${prompt}`;
+  
   const sessionId = agent.session_id || null;
   logger.log('[agentRunner] runOpencodeCli() starting: agentId=%s prompt=%s sessionId=%s', 
     agentId, prompt.substring(0, 50) + '...', sessionId || '(none)');
   
-  const { child } = runOpencodeCliImpl(prompt, {
+  const { child } = runOpencodeCliImpl(enrichedPrompt, {
     onOutput,
     onExit: (code, signal) => {
       logger.log('[agentRunner] runOpencodeCli() exit: agentId=%s code=%s signal=%s', agentId, code, signal);
       runs.delete(key);
       onExit && onExit(code, signal);
     },
-    // 当检测到新的 session ID 时，保存到数据库
     onSession: (newSessionId) => {
       if (newSessionId && newSessionId !== sessionId) {
         logger.log('[agentRunner] saving new session_id for agentId=%s: %s', agentId, newSessionId);
@@ -195,7 +206,7 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit) {
       }
     },
     sessionId,
-    continue: !sessionId, // 如果没有指定 sessionId，则使用 --continue
+    continue: !sessionId,
   });
   runs.set(key, { process: child });
   return true;

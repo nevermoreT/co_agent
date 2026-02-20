@@ -157,24 +157,29 @@ export function upsertKnowledge({
   }
 }
 
-export function buildAgentContext(agentId, _conversationId) {
-  const knowledge = getKnowledge({ category: ['project', 'decision'] });
-  const recentEvents = getRecentEvents({ limit: 20, minImportance: 5, excludeAgentId: agentId });
+export function buildAgentContext(agentId, conversationId) {
+  const knowledge = getKnowledge();
+  const recentEvents = getEvents({
+    conversationId,
+    limit: 30,
+    minImportance: 3,
+    excludeAgentId: agentId,
+  });
 
   const knowledgeText = knowledge.length > 0
     ? knowledge.map(k => `- ${k.key}: ${k.value}`).join('\n')
     : '暂无共识知识';
 
   const eventsText = recentEvents.length > 0
-    ? recentEvents.map(e => `- [${e.source_agent_name || 'System'}] ${e.title}`).join('\n')
-    : '暂无团队动态';
+    ? recentEvents.map(e => `- [${e.source_agent_name || 'User'}] ${e.title}`).join('\n')
+    : '暂无对话历史';
 
   return `## 共识记忆上下文
 
 ### 项目共识
 ${knowledgeText}
 
-### 团队动态 (最近 ${recentEvents.length} 条)
+### 对话历史 (最近 ${recentEvents.length} 条)
 ${eventsText}`;
 }
 

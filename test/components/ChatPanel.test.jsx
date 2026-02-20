@@ -269,7 +269,7 @@ describe('ChatPanel 组件测试', () => {
       
       await waitFor(() => {
         expect(defaultProps.onStart).toHaveBeenCalledWith(1);
-        expect(defaultProps.onSendText).toHaveBeenCalledWith(1, 'Hello');
+        expect(defaultProps.onSendText).toHaveBeenCalledWith(1, 'Hello', 1);
       });
     });
 

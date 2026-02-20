@@ -174,7 +174,7 @@ export default function ChatPanel({
       }
 
       onStart(agent.id);
-      onSendText(agent.id, textWithoutMention.trim());
+      onSendText(agent.id, textWithoutMention.trim(), selectedTaskId);
     } else {
       try {
         const res = await fetch(`${API}/messages`, {

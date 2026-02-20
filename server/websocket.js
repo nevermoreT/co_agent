@@ -27,8 +27,9 @@ export function setupWebSocket(httpServer) {
         send({ type: 'error', message: 'Invalid JSON' });
         return;
       }
-      const { action, agentId, text } = msg;
+      const { action, agentId, text, conversationId } = msg;
       const id = agentId != null ? Number(agentId) : null;
+      const convId = conversationId != null ? Number(conversationId) : null;
 
       if (action === 'start') {
         if (id == null || Number.isNaN(id)) {
@@ -77,7 +78,7 @@ export function setupWebSocket(httpServer) {
               logger.log('[claude-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
               send({ type: 'exit', agentId: id, code, signal });
             };
-            const ok = agentRunner.runClaudeCli(id, text, onOutput, onExit);
+            const ok = agentRunner.runClaudeCli(id, text, onOutput, onExit, convId);
             if (!ok) {
               logger.log('[websocket] send: runClaudeCli failed for agentId=%s', id);
               send({ type: 'error', agentId: id, message: 'Claude CLI start failed (already running?)' });
@@ -101,7 +102,7 @@ export function setupWebSocket(httpServer) {
               logger.log('[opencode-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
               send({ type: 'exit', agentId: id, code, signal });
             };
-            const ok = agentRunner.runOpencodeCli(id, text, onOutput, onExit);
+            const ok = agentRunner.runOpencodeCli(id, text, onOutput, onExit, convId);
             if (!ok) {
               logger.log('[websocket] send: runOpencodeCli failed for agentId=%s', id);
               send({ type: 'error', agentId: id, message: 'Opencode CLI start failed (already running?)' });
