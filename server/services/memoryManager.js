@@ -72,10 +72,7 @@ export function getEvents({
   sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
-  logger.log('[memory] getEvents SQL: %s params: %s', sql, JSON.stringify(params));
-  const result = db.prepare(sql).all(...params);
-  logger.log('[memory] getEvents returned %d rows', result.length);
-  return result;
+  return db.prepare(sql).all(...params);
 }
 
 export function getRecentEvents({ limit = 20, minImportance = 5, excludeAgentId } = {}) {
@@ -161,10 +158,7 @@ export function upsertKnowledge({
 }
 
 export function buildAgentContext(agentId, conversationId) {
-  logger.log('[memory] buildAgentContext: agentId=%s conversationId=%s', agentId, conversationId);
-  
   if (!conversationId) {
-    logger.log('[memory] no conversationId, skipping context');
     return '';
   }
   
@@ -173,9 +167,7 @@ export function buildAgentContext(agentId, conversationId) {
     conversationId,
     limit: 10,
     minImportance: 3,
-    excludeAgentId: agentId,
   });
-  logger.log('[memory] getEvents returned %d events, knowledge %d items', recentEvents.length, knowledge.length);
 
   if (recentEvents.length === 0 && knowledge.length === 0) {
     return '';
@@ -189,13 +181,11 @@ export function buildAgentContext(agentId, conversationId) {
   
   if (recentEvents.length > 0) {
     context += `### 最近对话\n${recentEvents.map(e => {
-      const name = e.source_agent_name || 'User';
       const title = e.title.length > 50 ? e.title.substring(0, 50) + '...' : e.title;
-      return `- ${name}: ${title}`;
+      return `- ${title}`;
     }).join('\n')}\n`;
   }
 
-  logger.log('[memory] context length: %d', context.length);
   return context;
 }
 

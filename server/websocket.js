@@ -63,7 +63,7 @@ export function setupWebSocket(httpServer) {
           send({ type: 'error', message: 'agentId and text required' });
           return;
         }
-        logger.log('[websocket] send: agentId=%s text=%s convId=%s', id, text.substring(0, 50) + '...', convId);
+        logger.log('[websocket] send: agentId=%s convId=%s', id, convId);
         const agent = db.prepare('SELECT builtin_key FROM agents WHERE id = ?').get(id);
         if (agent && agent.builtin_key === 'claude-cli') {
           logger.log('[websocket] send: agentId=%s is claude-cli, calling runClaudeCli', id);

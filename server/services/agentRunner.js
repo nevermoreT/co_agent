@@ -138,15 +138,13 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) 
   }
   
   const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
-  logger.log('[agentRunner] memoryContext: agentId=%s convId=%s len=%d context=%s', 
-    agentId, conversationId, memoryContext.length, memoryContext.substring(0, 100));
   const enrichedPrompt = memoryContext 
     ? `${memoryContext}\n---\n用户请求：${prompt}`
     : prompt;
   
   const sessionId = agent.session_id || null;
-  logger.log('[agentRunner] runClaudeCli() starting: agentId=%s prompt=%s sessionId=%s', 
-    agentId, prompt.substring(0, 50) + '...', sessionId || '(none)');
+  logger.log('[agentRunner] runClaudeCli() agentId=%s promptLen=%d sessionId=%s', 
+    agentId, prompt.length, sessionId || '(none)');
   
   const { child } = runClaudeCliImpl(enrichedPrompt, {
     onOutput,
@@ -182,15 +180,13 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId
   }
   
   const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
-  logger.log('[agentRunner] memoryContext: agentId=%s convId=%s len=%d context=%s', 
-    agentId, conversationId, memoryContext.length, memoryContext.substring(0, 100));
   const enrichedPrompt = memoryContext 
     ? `${memoryContext}\n---\n用户请求：${prompt}`
     : prompt;
   
   const sessionId = agent.session_id || null;
-  logger.log('[agentRunner] runOpencodeCli() starting: agentId=%s prompt=%s sessionId=%s', 
-    agentId, prompt.substring(0, 50) + '...', sessionId || '(none)');
+  logger.log('[agentRunner] runOpencodeCli() agentId=%s promptLen=%d sessionId=%s', 
+    agentId, prompt.length, sessionId || '(none)');
   
   const { child } = runOpencodeCliImpl(enrichedPrompt, {
     onOutput,

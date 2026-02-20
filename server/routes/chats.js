@@ -81,15 +81,22 @@ router.post('/messages', (req, res) => {
 
     const row = db.prepare('SELECT * FROM global_messages WHERE id = ?').get(info.lastInsertRowid);
 
-    if (content && content.trim()) {
+    if (content && content.trim() && role === 'user') {
+      let title = content;
+      if (content.startsWith('@')) {
+        const atEnd = content.indexOf(' ');
+        if (atEnd > 0) {
+          title = content.substring(atEnd + 1);
+        }
+      }
+      title = title.substring(0, 50) + (title.length > 50 ? '...' : '');
+      
       memoryManager.recordEvent({
         eventType: 'conversation',
-        sourceAgentId: agent_id,
-        sourceAgentName: agent_name || (role === 'user' ? 'User' : 'Unknown'),
         conversationId: task_id,
-        title: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
+        title: title || content.substring(0, 50),
         content: content,
-        importance: role === 'user' ? 6 : 5,
+        importance: 6,
       });
     }
 
