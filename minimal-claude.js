@@ -156,6 +156,8 @@ function processPtyData(data, stdoutBuf, onOutput, onSession, chunkNum) {
   }
   
   stdoutBuf.current = remaining;
+  console.log('[minimal-claude] chunk %d: %d chars, %d JSON objects, buffer %d chars', 
+    chunkNum.val, data.length, objects.length, remaining.length);
   chunkNum.val++;
 }
 
