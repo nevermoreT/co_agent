@@ -135,8 +135,14 @@ function processPtyData(data, stdoutBuf, onOutput, onSession, chunkNum) {
   }
   
   stdoutBuf.current = s.substring(consumed);
-  console.log('[minimal-claude] chunk %d: %d chars, found %d JSON objects, buffer %d chars', 
-    chunkNum.val, data.length, objects.length, stdoutBuf.current.length);
+  
+  if (objects.length === 0 && s.length > 200) {
+    console.log('[minimal-claude] chunk %d: %d chars, no JSON found, buffer preview: %s', 
+      chunkNum.val, data.length, s.substring(0, 100) + '...' + s.substring(s.length - 50));
+  } else {
+    console.log('[minimal-claude] chunk %d: %d chars, found %d JSON objects, buffer %d chars', 
+      chunkNum.val, data.length, objects.length, stdoutBuf.current.length);
+  }
   chunkNum.val++;
 }
 
