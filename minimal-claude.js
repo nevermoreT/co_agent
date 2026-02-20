@@ -68,21 +68,27 @@ function parseNdjsonLine(line, onOutput, onSession) {
     }
     
     if (obj.type === 'assistant' && obj.message?.content) {
+      console.log('[minimal-claude] assistant message, blocks:', obj.message.content.length);
       for (const block of obj.message.content) {
         if (block.type === 'text' && block.text) {
+          console.log('[minimal-claude] calling onOutput, text length:', block.text.length);
           onOutput('stdout', block.text);
         }
       }
     }
-  } catch {
-    // PTY 可能截断长 JSON 行，忽略解析错误
+  } catch (e) {
+    console.error('[minimal-claude] JSON parse failed, line length:', raw.length, 'first 100 chars:', raw.substring(0, 100));
+    console.error('[minimal-claude] parse error:', e.message);
   }
 }
 
-function processPtyData(data, stdoutBuf, onOutput, onSession) {
+function processPtyData(data, stdoutBuf, onOutput, onSession, lineNumber) {
   const s = stdoutBuf.current + data;
   const lines = s.split(/\r?\n/);
   stdoutBuf.current = lines.pop() ?? '';
+  console.log('[minimal-claude] chunk %d: received %d chars, split into %d lines, buffer %d chars', 
+    lineNumber.val, data.length, lines.length, stdoutBuf.current.length);
+  lineNumber.val++;
   for (const line of lines) parseNdjsonLine(line, onOutput, onSession);
 }
 
@@ -188,8 +194,9 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
         env: process.env,
       });
       const stdoutBuf = { current: '' };
+      const lineNumber = { val: 0 };
       ptyProcess.on('data', (data) => {
-        processPtyData(data, stdoutBuf, onOutput, onSession);
+        processPtyData(data, stdoutBuf, onOutput, onSession, lineNumber);
       });
       ptyProcess.on('exit', (code, signal) => {
         if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
@@ -206,8 +213,9 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
         env: process.env,
       });
       const stdoutBuf = { current: '' };
+      const lineNumber = { val: 0 };
       ptyProcess.on('data', (data) => {
-        processPtyData(data, stdoutBuf, onOutput, onSession);
+        processPtyData(data, stdoutBuf, onOutput, onSession, lineNumber);
       });
       ptyProcess.on('exit', (code, signal) => {
         if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
