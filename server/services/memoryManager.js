@@ -173,20 +173,22 @@ export function buildAgentContext(agentId, conversationId) {
     return '';
   }
 
-  let context = '';
+  const parts = [];
   
   if (knowledge.length > 0) {
-    context += `### 项目共识\n${knowledge.map(k => `- ${k.key}: ${k.value}`).join('\n')}\n\n`;
+    parts.push('[项目共识]');
+    parts.push(...knowledge.map(k => `${k.key}: ${k.value}`));
   }
   
   if (recentEvents.length > 0) {
-    context += `### 最近对话\n${recentEvents.map(e => {
+    parts.push('[最近对话]');
+    parts.push(...recentEvents.map(e => {
       const title = e.title.length > 50 ? e.title.substring(0, 50) + '...' : e.title;
-      return `- ${title}`;
-    }).join('\n')}\n`;
+      return title;
+    }));
   }
 
-  return context;
+  return parts.join(' | ');
 }
 
 export function deleteKnowledge(category, key) {

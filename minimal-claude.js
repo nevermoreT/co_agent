@@ -233,10 +233,11 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
   
   const escapeForShell = (arg) => {
     if (!arg) return '""';
-    if (arg.includes(' ') || arg.includes('\n') || arg.includes('"') || arg.includes("'") || arg.includes('&') || arg.includes('|')) {
-      return '"' + arg.replace(/"/g, '""') + '"';
+    const escaped = arg.replace(/\n/g, ' ').replace(/\r/g, '');
+    if (escaped.includes(' ') || escaped.includes('"') || escaped.includes("'") || escaped.includes('&') || escaped.includes('|')) {
+      return '"' + escaped.replace(/"/g, '""') + '"';
     }
-    return arg;
+    return escaped;
   };
 
   const args = [
