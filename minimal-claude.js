@@ -254,8 +254,7 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
     
     if (isWin) {
       const cmdStr = 'claude ' + cmdArgs.map(escapeForShell).join(' ');
-      console.log('[minimal-claude] PTY command length:', cmdStr.length);
-      console.log('[minimal-claude] PTY command:', cmdStr);
+      console.log('[minimal-claude] PTY command:', cmdStr.substring(0, 100) + (cmdStr.length > 100 ? '...' : ''));
       
       const ptyProcess = ptySpawn(process.env.COMSPEC || 'cmd.exe', ['/c', cmdStr], {
         name: 'xterm-256color',
