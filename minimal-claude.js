@@ -156,38 +156,28 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
 export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: shouldContinue = true, sessionId, cwd } = {}) {
   const isWin = process.platform === 'win32';
   
-  // 构建会话参数
   const sessionConfig = buildSessionArgs({ continue: shouldContinue, sessionId });
   
-  // 构建命令参数
-  const escapeArg = (arg) => {
-    if (arg.includes(' ') || arg.includes('\n') || arg.includes('"') || arg.includes("'")) {
-      return `"${arg.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`;
-    }
-    return arg;
-  };
-
   const baseArgs = [
-    '-p', escapeArg(prompt || ''),
     ...sessionConfig.args,
     '--output-format', 'stream-json',
     '--verbose',
     '--permission-mode', 'acceptEdits'
   ];
-  const cmdStr = `claude ${baseArgs.join(' ')}`;
-  
-  console.log('[minimal-claude] Command:', cmdStr.substring(0, 200) + (cmdStr.length > 200 ? '...' : ''));
 
-  // 工作目录：优先使用传入的 cwd，否则使用当前目录
   const workDir = cwd || process.cwd();
+  const fullPrompt = prompt || '';
 
   if (ptySpawn) {
-    // 使用伪终端，子进程认为在写 TTY，通常不会全缓冲，可避免"卡住"
+    const argsWithPrompt = [...baseArgs, '-p', fullPrompt];
     const file = isWin ? (process.env.COMSPEC || 'cmd.exe') : 'claude';
-    const args = isWin ? ['/c', cmdStr] : baseArgs;
+    const args = isWin ? ['/c', 'claude', ...argsWithPrompt] : argsWithPrompt;
+    
+    console.log('[minimal-claude] PTY args:', args.slice(0, 5).join(' '), '...');
+    
     const ptyProcess = ptySpawn(file, args, {
       name: 'xterm-256color',
-      cols: 8192, // 足够宽，避免 PTY 在行内插入 \r\n 把一条 NDJSON 拆成多行导致解析失败
+      cols: 8192,
       rows: 24,
       cwd: workDir,
       env: process.env,
@@ -204,10 +194,9 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
     return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
   }
 
-  // 回退：普通 spawn（stdout 可能被缓冲）
   const child = isWin
-    ? spawn(cmdStr, [], { stdio: ['inherit', 'pipe', 'pipe'], shell: true, cwd: workDir })
-    : spawn('claude', baseArgs, { stdio: ['inherit', 'pipe', 'pipe'], cwd: workDir });
+    ? spawn('claude', [...baseArgs, '-p', fullPrompt], { stdio: ['inherit', 'pipe', 'pipe'], cwd: workDir })
+    : spawn('claude', [...baseArgs, '-p', fullPrompt], { stdio: ['inherit', 'pipe', 'pipe'], cwd: workDir });
 
   let stdoutBuf = '';
   child.stdout.on('data', (chunk) => {
