@@ -22,6 +22,27 @@
   letter-spacing: 0.02em;
 }
 
+.btn-new-task {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 1.125rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-new-task:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
 .task-list {
   list-style: none;
   margin: 0;
@@ -30,10 +51,23 @@
   flex: 1;
 }
 
+.task-group {
+  margin-bottom: 8px;
+}
+
+.task-group-header {
+  padding: 8px 8px 4px 8px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .task-item {
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   cursor: pointer;
   border: 1px solid transparent;
   background: transparent;
@@ -61,63 +95,47 @@
   border-radius: 0 2px 2px 0;
 }
 
-.task-item-main {
+.task-item-content {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.task-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.task-item-title {
   font-size: 0.8125rem;
   font-weight: 500;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.task-status {
-  font-size: 0.625rem;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: var(--radius-xs);
-  flex-shrink: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-family: 'IBM Plex Mono', monospace;
-}
-
-.task-status-pending {
-  background: var(--bg-tertiary);
+.task-item-preview {
+  font-size: 0.75rem;
   color: var(--text-muted);
-  border: 1px solid var(--border-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.task-status-doing {
-  background: var(--accent-tertiary-light);
-  color: var(--accent-tertiary);
-}
-
-.task-status-done {
-  background: var(--accent-secondary-light);
-  color: var(--accent-secondary);
-}
-
-.task-item-actions {
-  margin-top: 8px;
+.task-item-meta {
   display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-light);
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
 }
 
-.task-item-actions .btn {
-  padding: 4px 8px;
+.task-item-time {
   font-size: 0.6875rem;
+  color: var(--text-light);
+}
+
+.task-item-count {
+  font-size: 0.625rem;
+  color: var(--text-light);
+  background: var(--bg-tertiary);
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
 }
 
 .task-panel-loading {
@@ -126,6 +144,50 @@
   text-align: center;
   font-size: 0.8125rem;
   font-weight: 500;
+}
+
+.task-panel-empty {
+  padding: 32px 16px;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 0.8125rem;
+}
+
+.context-menu {
+  position: fixed;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  z-index: 200;
+  min-width: 100px;
+}
+
+.context-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: all var(--transition-fast);
+}
+
+.context-menu button:hover {
+  background: var(--bg-tertiary);
+}
+
+.context-menu button.danger {
+  color: var(--accent-danger);
+}
+
+.context-menu button.danger:hover {
+  background: var(--accent-danger-light);
 }
 
 .task-modal {
@@ -198,4 +260,13 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
