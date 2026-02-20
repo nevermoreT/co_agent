@@ -69,9 +69,8 @@ export function setupWebSocket(httpServer) {
           logger.log('[websocket] send: agentId=%s is claude-cli, calling runClaudeCli', id);
           try {
             const onOutput = (stream, data) => {
-              logger.log('[claude-cli] onOutput called: stream=%s dataLength=%d', stream, data?.length || 0);
               if (stream === 'stdout' && typeof data === 'string' && data.length > 0) {
-                logger.log('[claude-cli] stdout chunk:', data.length, 'chars');
+                logger.log('[claude-cli] stdout chunk: %d chars', data.length);
               }
               send({ type: 'output', agentId: id, stream, data });
             };

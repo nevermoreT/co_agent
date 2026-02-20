@@ -68,16 +68,14 @@ function parseNdjsonLine(line, onOutput, onSession) {
     }
     
     if (obj.type === 'assistant' && obj.message?.content) {
-      console.log('[minimal-claude] assistant message, content blocks:', obj.message.content.length);
       for (const block of obj.message.content) {
         if (block.type === 'text' && block.text) {
-          console.log('[minimal-claude] calling onOutput with text length:', block.text.length);
           onOutput('stdout', block.text);
         }
       }
     }
-  } catch (e) {
-    console.log('[minimal-claude] JSON parse error for line:', raw.substring(0, 100), 'error:', e.message);
+  } catch {
+    // PTY 可能截断长 JSON 行，忽略解析错误
   }
 }
 
@@ -158,7 +156,15 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
   
   const sessionConfig = buildSessionArgs({ continue: shouldContinue, sessionId });
   
-  const baseArgs = [
+  const escapeForShell = (arg) => {
+    if (!arg) return '""';
+    if (arg.includes(' ') || arg.includes('\n') || arg.includes('"') || arg.includes("'") || arg.includes('&') || arg.includes('|')) {
+      return '"' + arg.replace(/"/g, '""') + '"';
+    }
+    return arg;
+  };
+
+  const args = [
     ...sessionConfig.args,
     '--output-format', 'stream-json',
     '--verbose',
@@ -166,37 +172,56 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
   ];
 
   const workDir = cwd || process.cwd();
-  const fullPrompt = prompt || '';
 
   if (ptySpawn) {
-    const argsWithPrompt = [...baseArgs, '-p', fullPrompt];
-    const file = isWin ? (process.env.COMSPEC || 'cmd.exe') : 'claude';
-    const args = isWin ? ['/c', 'claude', ...argsWithPrompt] : argsWithPrompt;
+    const cmdArgs = [...args, '-p', prompt || ''];
     
-    console.log('[minimal-claude] PTY args:', args.slice(0, 5).join(' '), '...');
-    
-    const ptyProcess = ptySpawn(file, args, {
-      name: 'xterm-256color',
-      cols: 8192,
-      rows: 24,
-      cwd: workDir,
-      env: process.env,
-    });
-    const stdoutBuf = { current: '' };
-    ptyProcess.on('data', (data) => {
-      processPtyData(data, stdoutBuf, onOutput, onSession);
-    });
-    ptyProcess.on('exit', (code, signal) => {
-      if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
-      onExit && onExit(code ?? -1, signal);
-    });
-    console.log('[minimal-claude] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
-    return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
+    if (isWin) {
+      const cmdStr = 'claude ' + cmdArgs.map(escapeForShell).join(' ');
+      console.log('[minimal-claude] PTY command:', cmdStr.substring(0, 150) + (cmdStr.length > 150 ? '...' : ''));
+      
+      const ptyProcess = ptySpawn(process.env.COMSPEC || 'cmd.exe', ['/c', cmdStr], {
+        name: 'xterm-256color',
+        cols: 8192,
+        rows: 24,
+        cwd: workDir,
+        env: process.env,
+      });
+      const stdoutBuf = { current: '' };
+      ptyProcess.on('data', (data) => {
+        processPtyData(data, stdoutBuf, onOutput, onSession);
+      });
+      ptyProcess.on('exit', (code, signal) => {
+        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
+        onExit && onExit(code ?? -1, signal);
+      });
+      console.log('[minimal-claude] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
+      return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
+    } else {
+      const ptyProcess = ptySpawn('claude', cmdArgs, {
+        name: 'xterm-256color',
+        cols: 8192,
+        rows: 24,
+        cwd: workDir,
+        env: process.env,
+      });
+      const stdoutBuf = { current: '' };
+      ptyProcess.on('data', (data) => {
+        processPtyData(data, stdoutBuf, onOutput, onSession);
+      });
+      ptyProcess.on('exit', (code, signal) => {
+        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
+        onExit && onExit(code ?? -1, signal);
+      });
+      console.log('[minimal-claude] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
+      return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
+    }
   }
 
-  const child = isWin
-    ? spawn('claude', [...baseArgs, '-p', fullPrompt], { stdio: ['inherit', 'pipe', 'pipe'], cwd: workDir })
-    : spawn('claude', [...baseArgs, '-p', fullPrompt], { stdio: ['inherit', 'pipe', 'pipe'], cwd: workDir });
+  const child = spawn('claude', [...args, '-p', prompt || ''], { 
+    stdio: ['inherit', 'pipe', 'pipe'], 
+    cwd: workDir 
+  });
 
   let stdoutBuf = '';
   child.stdout.on('data', (chunk) => {
