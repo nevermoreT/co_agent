@@ -161,26 +161,30 @@ export function buildAgentContext(agentId, conversationId) {
   const knowledge = getKnowledge();
   const recentEvents = getEvents({
     conversationId,
-    limit: 30,
+    limit: 10,
     minImportance: 3,
     excludeAgentId: agentId,
   });
 
-  const knowledgeText = knowledge.length > 0
-    ? knowledge.map(k => `- ${k.key}: ${k.value}`).join('\n')
-    : '暂无共识知识';
+  if (recentEvents.length === 0 && knowledge.length === 0) {
+    return '';
+  }
 
-  const eventsText = recentEvents.length > 0
-    ? recentEvents.map(e => `- [${e.source_agent_name || 'User'}] ${e.title}`).join('\n')
-    : '暂无对话历史';
+  let context = '';
+  
+  if (knowledge.length > 0) {
+    context += `### 项目共识\n${knowledge.map(k => `- ${k.key}: ${k.value}`).join('\n')}\n\n`;
+  }
+  
+  if (recentEvents.length > 0) {
+    context += `### 最近对话\n${recentEvents.map(e => {
+      const name = e.source_agent_name || 'User';
+      const title = e.title.length > 50 ? e.title.substring(0, 50) + '...' : e.title;
+      return `- ${name}: ${title}`;
+    }).join('\n')}\n`;
+  }
 
-  return `## 共识记忆上下文
-
-### 项目共识
-${knowledgeText}
-
-### 对话历史 (最近 ${recentEvents.length} 条)
-${eventsText}`;
+  return context;
 }
 
 export function deleteKnowledge(category, key) {
