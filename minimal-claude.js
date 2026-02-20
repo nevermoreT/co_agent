@@ -58,27 +58,22 @@ function parseNdjsonLine(line, onOutput, onSession) {
     const obj = JSON.parse(raw);
     
     if (obj.type === 'system' && obj.session_id) {
-      console.log('[minimal-claude] detected session_id:', obj.session_id);
       onSession && onSession(obj.session_id);
     }
     
     if (obj.type === 'result' && obj.session_id) {
-      console.log('[minimal-claude] detected session_id in result:', obj.session_id);
       onSession && onSession(obj.session_id);
     }
     
     if (obj.type === 'assistant' && obj.message?.content) {
-      console.log('[minimal-claude] assistant message, blocks:', obj.message.content.length);
       for (const block of obj.message.content) {
         if (block.type === 'text' && block.text) {
-          console.log('[minimal-claude] calling onOutput, text length:', block.text.length);
           onOutput('stdout', block.text);
         }
       }
     }
   } catch (e) {
-    console.error('[minimal-claude] JSON parse failed, line length:', raw.length, 'first 100 chars:', raw.substring(0, 100));
-    console.error('[minimal-claude] parse error:', e.message);
+    console.error('[minimal-claude] JSON parse failed:', e.message, 'line length:', raw.length);
   }
 }
 
@@ -91,6 +86,30 @@ function extractJsonObjects(text) {
   
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
+    
+    if (c === '\x1b') {
+      let j = i + 1;
+      if (j < text.length && text[j] === '[') {
+        j++;
+        while (j < text.length && /[0-9;]/.test(text[j])) j++;
+        if (j < text.length && /[A-Za-z]/.test(text[j])) j++;
+        i = j - 1;
+        continue;
+      } else if (j < text.length && text[j] === ']') {
+        const endBell = text.indexOf('\x07', j);
+        const endEsc = text.indexOf('\x1b\\', j);
+        if (endBell !== -1 && (endEsc === -1 || endBell < endEsc)) {
+          i = endBell;
+        } else if (endEsc !== -1) {
+          i = endEsc + 1;
+        } else {
+          i = j;
+        }
+        continue;
+      }
+    }
+    
+    if (c === '\r') continue;
     
     if (escape) {
       escape = false;
@@ -115,34 +134,28 @@ function extractJsonObjects(text) {
     } else if (c === '}') {
       depth--;
       if (depth === 0 && start >= 0) {
-        objects.push(text.substring(start, i + 1));
+        objects.push({ text: text.substring(start, i + 1), start });
         start = -1;
       }
     }
   }
   
-  return objects;
+  const lastObj = objects[objects.length - 1];
+  const consumed = lastObj ? lastObj.start + lastObj.text.length : 0;
+  const remaining = text.substring(consumed);
+  
+  return { objects: objects.map(o => o.text), remaining };
 }
 
 function processPtyData(data, stdoutBuf, onOutput, onSession, chunkNum) {
   const s = stdoutBuf.current + data;
-  const objects = extractJsonObjects(s);
+  const { objects, remaining } = extractJsonObjects(s);
   
-  let consumed = 0;
   for (const obj of objects) {
     parseNdjsonLine(obj, onOutput, onSession);
-    consumed += obj.length;
   }
   
-  stdoutBuf.current = s.substring(consumed);
-  
-  if (objects.length === 0 && s.length > 200) {
-    console.log('[minimal-claude] chunk %d: %d chars, no JSON found, buffer preview: %s', 
-      chunkNum.val, data.length, s.substring(0, 100) + '...' + s.substring(s.length - 50));
-  } else {
-    console.log('[minimal-claude] chunk %d: %d chars, found %d JSON objects, buffer %d chars', 
-      chunkNum.val, data.length, objects.length, stdoutBuf.current.length);
-  }
+  stdoutBuf.current = remaining;
   chunkNum.val++;
 }
 
@@ -254,7 +267,7 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
       });
       ptyProcess.on('exit', (code, signal) => {
         if (stdoutBuf.current.trim()) {
-          const objects = extractJsonObjects(stdoutBuf.current);
+          const { objects } = extractJsonObjects(stdoutBuf.current);
           for (const obj of objects) parseNdjsonLine(obj, onOutput, onSession);
         }
         onExit && onExit(code ?? -1, signal);
@@ -276,7 +289,7 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
       });
       ptyProcess.on('exit', (code, signal) => {
         if (stdoutBuf.current.trim()) {
-          const objects = extractJsonObjects(stdoutBuf.current);
+          const { objects } = extractJsonObjects(stdoutBuf.current);
           for (const obj of objects) parseNdjsonLine(obj, onOutput, onSession);
         }
         onExit && onExit(code ?? -1, signal);
@@ -294,17 +307,15 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
   let stdoutBuf = '';
   child.stdout.on('data', (chunk) => {
     const s = stdoutBuf + chunk.toString();
-    const objects = extractJsonObjects(s);
-    let consumed = 0;
+    const { objects, remaining } = extractJsonObjects(s);
     for (const obj of objects) {
       parseNdjsonLine(obj, onOutput, onSession);
-      consumed += obj.length;
     }
-    stdoutBuf = s.substring(consumed);
+    stdoutBuf = remaining;
   });
   child.stdout.on('end', () => {
     if (stdoutBuf.trim()) {
-      const objects = extractJsonObjects(stdoutBuf);
+      const { objects } = extractJsonObjects(stdoutBuf);
       for (const obj of objects) parseNdjsonLine(obj, onOutput, onSession);
     }
   });
