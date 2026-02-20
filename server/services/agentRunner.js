@@ -144,6 +144,8 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) 
 
 用户请求：${prompt}`;
   
+  logger.log('[agentRunner] enrichedPrompt length: %d', enrichedPrompt.length);
+  
   const sessionId = agent.session_id || null;
   logger.log('[agentRunner] runClaudeCli() starting: agentId=%s prompt=%s sessionId=%s', 
     agentId, prompt.substring(0, 50) + '...', sessionId || '(none)');

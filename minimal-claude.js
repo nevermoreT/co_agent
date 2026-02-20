@@ -57,28 +57,27 @@ function parseNdjsonLine(line, onOutput, onSession) {
   try {
     const obj = JSON.parse(raw);
     
-    // 检测 system 消息中的 session_id
     if (obj.type === 'system' && obj.session_id) {
       console.log('[minimal-claude] detected session_id:', obj.session_id);
       onSession && onSession(obj.session_id);
     }
     
-    // 检测 result 消息中的 session_id
     if (obj.type === 'result' && obj.session_id) {
       console.log('[minimal-claude] detected session_id in result:', obj.session_id);
       onSession && onSession(obj.session_id);
     }
     
-    // 解析 assistant 消息
     if (obj.type === 'assistant' && obj.message?.content) {
+      console.log('[minimal-claude] assistant message, content blocks:', obj.message.content.length);
       for (const block of obj.message.content) {
         if (block.type === 'text' && block.text) {
+          console.log('[minimal-claude] calling onOutput with text length:', block.text.length);
           onOutput('stdout', block.text);
         }
       }
     }
-  } catch {
-    // ignore JSON parse errors for incomplete/invalid lines
+  } catch (e) {
+    console.log('[minimal-claude] JSON parse error for line:', raw.substring(0, 100), 'error:', e.message);
   }
 }
 
