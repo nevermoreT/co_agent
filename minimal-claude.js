@@ -167,7 +167,9 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
     '--verbose',
     '--permission-mode', 'acceptEdits'
   ];
-  const cmdStr = `claude ${baseArgs.join(' ')}`;
+  const cmdStr = `claude ${baseArgs.map(a => a.includes(' ') || a.includes('\n') ? `"${a.replace(/"/g, '\\"')}"` : a).join(' ')}`;
+  
+  console.log('[minimal-claude] Command:', cmdStr.substring(0, 200) + (cmdStr.length > 200 ? '...' : ''));
 
   // 工作目录：优先使用传入的 cwd，否则使用当前目录
   const workDir = cwd || process.cwd();
