@@ -165,7 +165,7 @@ export function buildAgentContext(agentId, conversationId) {
   const knowledge = getKnowledge();
   const recentEvents = getEvents({
     conversationId,
-    limit: 10,
+    limit: 3,
     minImportance: 3,
   });
 
@@ -175,20 +175,15 @@ export function buildAgentContext(agentId, conversationId) {
 
   const parts = [];
   
-  if (knowledge.length > 0) {
-    parts.push('[项目共识]');
-    parts.push(...knowledge.map(k => `${k.key}: ${k.value}`));
-  }
-  
   if (recentEvents.length > 0) {
-    parts.push('[最近对话]');
+    parts.push('之前用户问过:');
     parts.push(...recentEvents.map(e => {
-      const title = e.title.length > 50 ? e.title.substring(0, 50) + '...' : e.title;
-      return title;
+      const title = e.title.length > 30 ? e.title.substring(0, 30) + '...' : e.title;
+      return `"${title}"`;
     }));
   }
 
-  return parts.join(' | ');
+  return parts.join(' ');
 }
 
 export function deleteKnowledge(category, key) {
