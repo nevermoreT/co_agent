@@ -155,45 +155,75 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
 export function runOpencodeCli(prompt, { onOutput, onExit, onSession, continue: shouldContinue = true, sessionId, cwd } = {}) {
   const isWin = process.platform === 'win32';
   
-  // 构建会话参数
   const sessionConfig = buildSessionArgs({ continue: shouldContinue, sessionId });
   
-  // 构建命令
-  // Windows 使用 shell 命令字符串，Linux 使用参数数组
-  const baseArgs = ['run', ...sessionConfig.args, '--format', 'json', prompt || ''];
-  const cmdStr = `opencode ${baseArgs.join(' ')}`;
+  const escapeForShell = (arg) => {
+    if (!arg) return '""';
+    const escaped = arg.replace(/\n/g, ' ').replace(/\r/g, '');
+    if (escaped.includes(' ') || escaped.includes('"') || escaped.includes("'") || escaped.includes('&') || escaped.includes('|')) {
+      return '"' + escaped.replace(/"/g, '""') + '"';
+    }
+    return escaped;
+  };
 
-  // 工作目录：优先使用传入的 cwd，否则使用当前目录
+  const baseArgs = ['run', ...sessionConfig.args, '--format', 'json'];
   const workDir = cwd || process.cwd();
 
   if (ptySpawn) {
-    // 使用伪终端，子进程认为在写 TTY，通常不会全缓冲
     const file = isWin ? (process.env.COMSPEC || 'cmd.exe') : 'opencode';
-    const args = isWin ? ['/c', cmdStr] : baseArgs;
-    const ptyProcess = ptySpawn(file, args, {
-      name: 'xterm-256color',
-      cols: 8192, // 足够宽，避免 PTY 在行内插入 \r\n 把一条 NDJSON 拆成多行
-      rows: 24,
-      cwd: workDir,
-      env: process.env,
-    });
-    const stdoutBuf = { current: '' };
-    ptyProcess.on('data', (data) => {
-      processPtyData(data, stdoutBuf, onOutput, onSession);
-    });
-    ptyProcess.on('exit', (code, signal) => {
-      if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
-      onExit && onExit(code ?? -1, signal);
-    });
-    console.log('[minimal-opencode] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
-    return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
+    
+    if (isWin) {
+      const escapedPrompt = escapeForShell(prompt || '');
+      const cmdStr = `opencode run ${sessionConfig.args.join(' ')} --format json ${escapedPrompt}`;
+      console.log('[minimal-opencode] PTY command:', cmdStr);
+      
+      const ptyProcess = ptySpawn(file, ['/c', cmdStr], {
+        name: 'xterm-256color',
+        cols: 8192,
+        rows: 24,
+        cwd: workDir,
+        env: process.env,
+      });
+      const stdoutBuf = { current: '' };
+      ptyProcess.on('data', (data) => {
+        processPtyData(data, stdoutBuf, onOutput, onSession);
+      });
+      ptyProcess.on('exit', (code, signal) => {
+        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
+        onExit && onExit(code ?? -1, signal);
+      });
+      console.log('[minimal-opencode] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
+      return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
+    } else {
+      const fullArgs = [...baseArgs, prompt || ''];
+      console.log('[minimal-opencode] PTY command: opencode', fullArgs.join(' '));
+      
+      const ptyProcess = ptySpawn('opencode', fullArgs, {
+        name: 'xterm-256color',
+        cols: 8192,
+        rows: 24,
+        cwd: workDir,
+        env: process.env,
+      });
+      const stdoutBuf = { current: '' };
+      ptyProcess.on('data', (data) => {
+        processPtyData(data, stdoutBuf, onOutput, onSession);
+      });
+      ptyProcess.on('exit', (code, signal) => {
+        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
+        onExit && onExit(code ?? -1, signal);
+      });
+      console.log('[minimal-opencode] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
+      return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
+    }
   }
 
-  // 回退：普通 spawn（stdout 可能被缓冲）
-  // 使用 'pipe' 而不是 'inherit' 作为 stdin，避免 opencode 等待 stdin 输入导致卡死
+  const cmdStr = `opencode ${baseArgs.join(' ')} "${(prompt || '').replace(/"/g, '\\"')}"`;
+  console.log('[minimal-opencode] spawn command:', cmdStr);
+  
   const child = isWin
     ? spawn(cmdStr, [], { stdio: ['pipe', 'pipe', 'pipe'], shell: true, cwd: workDir })
-    : spawn('opencode', baseArgs, { stdio: ['pipe', 'pipe', 'pipe'], cwd: workDir });
+    : spawn('opencode', [...baseArgs, prompt || ''], { stdio: ['pipe', 'pipe', 'pipe'], cwd: workDir });
   child.stdin.end();
 
   let stdoutBuf = '';
