@@ -160,14 +160,21 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
   const sessionConfig = buildSessionArgs({ continue: shouldContinue, sessionId });
   
   // 构建命令参数
+  const escapeArg = (arg) => {
+    if (arg.includes(' ') || arg.includes('\n') || arg.includes('"') || arg.includes("'")) {
+      return `"${arg.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`;
+    }
+    return arg;
+  };
+
   const baseArgs = [
-    '-p', prompt || '',
+    '-p', escapeArg(prompt || ''),
     ...sessionConfig.args,
     '--output-format', 'stream-json',
     '--verbose',
     '--permission-mode', 'acceptEdits'
   ];
-  const cmdStr = `claude ${baseArgs.map(a => a.includes(' ') || a.includes('\n') ? `"${a.replace(/"/g, '\\"')}"` : a).join(' ')}`;
+  const cmdStr = `claude ${baseArgs.join(' ')}`;
   
   console.log('[minimal-claude] Command:', cmdStr.substring(0, 200) + (cmdStr.length > 200 ? '...' : ''));
 
