@@ -82,14 +82,62 @@ function parseNdjsonLine(line, onOutput, onSession) {
   }
 }
 
-function processPtyData(data, stdoutBuf, onOutput, onSession, lineNumber) {
+function extractJsonObjects(text) {
+  const objects = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+  
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    
+    if (c === '\\' && inString) {
+      escape = true;
+      continue;
+    }
+    
+    if (c === '"') {
+      inString = !inString;
+      continue;
+    }
+    
+    if (inString) continue;
+    
+    if (c === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        objects.push(text.substring(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  
+  return objects;
+}
+
+function processPtyData(data, stdoutBuf, onOutput, onSession, chunkNum) {
   const s = stdoutBuf.current + data;
-  const lines = s.split(/\r?\n/);
-  stdoutBuf.current = lines.pop() ?? '';
-  console.log('[minimal-claude] chunk %d: received %d chars, split into %d lines, buffer %d chars', 
-    lineNumber.val, data.length, lines.length, stdoutBuf.current.length);
-  lineNumber.val++;
-  for (const line of lines) parseNdjsonLine(line, onOutput, onSession);
+  const objects = extractJsonObjects(s);
+  
+  let consumed = 0;
+  for (const obj of objects) {
+    parseNdjsonLine(obj, onOutput, onSession);
+    consumed += obj.length;
+  }
+  
+  stdoutBuf.current = s.substring(consumed);
+  console.log('[minimal-claude] chunk %d: %d chars, found %d JSON objects, buffer %d chars', 
+    chunkNum.val, data.length, objects.length, stdoutBuf.current.length);
+  chunkNum.val++;
 }
 
 /**
@@ -199,7 +247,10 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
         processPtyData(data, stdoutBuf, onOutput, onSession, lineNumber);
       });
       ptyProcess.on('exit', (code, signal) => {
-        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
+        if (stdoutBuf.current.trim()) {
+          const objects = extractJsonObjects(stdoutBuf.current);
+          for (const obj of objects) parseNdjsonLine(obj, onOutput, onSession);
+        }
         onExit && onExit(code ?? -1, signal);
       });
       console.log('[minimal-claude] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
@@ -218,7 +269,10 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
         processPtyData(data, stdoutBuf, onOutput, onSession, lineNumber);
       });
       ptyProcess.on('exit', (code, signal) => {
-        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
+        if (stdoutBuf.current.trim()) {
+          const objects = extractJsonObjects(stdoutBuf.current);
+          for (const obj of objects) parseNdjsonLine(obj, onOutput, onSession);
+        }
         onExit && onExit(code ?? -1, signal);
       });
       console.log('[minimal-claude] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
@@ -234,12 +288,19 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
   let stdoutBuf = '';
   child.stdout.on('data', (chunk) => {
     const s = stdoutBuf + chunk.toString();
-    const lines = s.split(/\r?\n/);
-    stdoutBuf = lines.pop() ?? '';
-    for (const line of lines) parseNdjsonLine(line, onOutput, onSession);
+    const objects = extractJsonObjects(s);
+    let consumed = 0;
+    for (const obj of objects) {
+      parseNdjsonLine(obj, onOutput, onSession);
+      consumed += obj.length;
+    }
+    stdoutBuf = s.substring(consumed);
   });
   child.stdout.on('end', () => {
-    if (stdoutBuf) parseNdjsonLine(stdoutBuf, onOutput, onSession);
+    if (stdoutBuf.trim()) {
+      const objects = extractJsonObjects(stdoutBuf);
+      for (const obj of objects) parseNdjsonLine(obj, onOutput, onSession);
+    }
   });
   child.stderr.on('data', (chunk) => onOutput('stderr', chunk.toString()));
   child.on('error', (err) => {
