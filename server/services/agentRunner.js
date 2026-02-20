@@ -143,8 +143,9 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) 
     : prompt;
   
   const sessionId = agent.session_id || null;
-  logger.log('[agentRunner] runClaudeCli() agentId=%s promptLen=%d sessionId=%s', 
-    agentId, prompt.length, sessionId || '(none)');
+  logger.log('[agentRunner] runClaudeCli() agentId=%s originalPromptLen=%d enrichedLen=%d sessionId=%s', 
+    agentId, prompt.length, enrichedPrompt.length, sessionId || '(none)');
+  logger.log('[agentRunner] enrichedPrompt: %s', enrichedPrompt);
   
   const { child } = runClaudeCliImpl(enrichedPrompt, {
     onOutput,
@@ -185,8 +186,9 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId
     : prompt;
   
   const sessionId = agent.session_id || null;
-  logger.log('[agentRunner] runOpencodeCli() agentId=%s promptLen=%d sessionId=%s', 
-    agentId, prompt.length, sessionId || '(none)');
+  logger.log('[agentRunner] runOpencodeCli() agentId=%s originalPromptLen=%d enrichedLen=%d sessionId=%s', 
+    agentId, prompt.length, enrichedPrompt.length, sessionId || '(none)');
+  logger.log('[agentRunner] enrichedPrompt: %s', enrichedPrompt);
   
   const { child } = runOpencodeCliImpl(enrichedPrompt, {
     onOutput,
