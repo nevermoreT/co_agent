@@ -82,7 +82,7 @@ router.post('/messages', (req, res) => {
     const row = db.prepare('SELECT * FROM global_messages WHERE id = ?').get(info.lastInsertRowid);
 
     if (content && content.trim() && role === 'user') {
-      let title = content.replace(/^@\S+\s+/, '').trim();
+      let title = content.replace(/^@[A-Za-z\s]+(?=\s\S)/, '').trim();
       title = title.substring(0, 50) + (title.length > 50 ? '...' : '');
       
       if (title) {
