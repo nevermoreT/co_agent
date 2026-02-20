@@ -87,10 +87,29 @@ function extractJsonObjects(text) {
 
 ---
 
+## 问题 4: 上下文注入不相关内容
+
+### 现象
+用户问 `@Claude CLI 2+2=多少`，但 Claude 收到的上下文包含 Opencode CLI 的长回复，导致回复偏离主题。
+
+### 根因
+1. shared_events 记录了所有消息（用户和 Agent 回复）
+2. Agent 回复通常很长，标题截断后仍然很长
+3. excludeAgentId 排除了当前 Agent，但保留了其他 Agent 的回复
+
+### 修复
+1. **只记录用户消息**：`role === 'user'` 才记录到 shared_events
+2. **移除 @Agent 前缀**：标题只显示实际内容，不显示 `@AgentName`
+3. **简化标题**：截断到 50 字符
+4. **移除 excludeAgentId**：只记录用户消息后无需排除
+
+---
+
 ## 修复记录
 
 ### 2026-02-21
 - 修复 logger.js 格式化问题
 - 修复 Windows PTY 参数转义
-- 修复 PTY 换行符丢失：使用 JSON 边界解析替代换行符分割
-- 修复 JSON 对象位置计算：在原始文本上跟踪位置，正确计算 remaining
+- 修复 PTY 换行符丢失：使用 JSON 边界解析
+- 修复 JSON 对象位置计算
+- 修复上下文注入：只记录用户消息，移除 @Agent 前缀
