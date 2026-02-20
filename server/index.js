@@ -8,6 +8,7 @@ import { setupWebSocket } from './websocket.js';
 import agentsRouter from './routes/agents.js';
 import tasksRouter from './routes/tasks.js';
 import chatsRouter from './routes/chats.js';
+import memoryRouter from './routes/memory.js';
 import logger from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -21,6 +22,7 @@ app.use(express.json());
 app.use('/api/agents', agentsRouter);
 app.use('/api/tasks', tasksRouter);
 app.use('/api', chatsRouter);
+app.use('/api/memory', memoryRouter);
 
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));

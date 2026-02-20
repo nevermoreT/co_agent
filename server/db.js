@@ -72,6 +72,42 @@ db.exec(`
     FOREIGN KEY (task_id) REFERENCES tasks(id)
   );
   CREATE INDEX IF NOT EXISTS idx_global_created ON global_messages(created_at);
+
+  CREATE TABLE IF NOT EXISTS shared_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    source_agent_id INTEGER,
+    source_agent_name TEXT,
+    conversation_id INTEGER,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    summary TEXT,
+    metadata TEXT,
+    importance INTEGER DEFAULT 5,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (source_agent_id) REFERENCES agents(id),
+    FOREIGN KEY (conversation_id) REFERENCES tasks(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_events_type ON shared_events(event_type);
+  CREATE INDEX IF NOT EXISTS idx_events_agent ON shared_events(source_agent_id);
+  CREATE INDEX IF NOT EXISTS idx_events_time ON shared_events(created_at);
+  CREATE INDEX IF NOT EXISTS idx_events_importance ON shared_events(importance);
+
+  CREATE TABLE IF NOT EXISTS consensus_knowledge (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    context TEXT,
+    source_events TEXT,
+    verified_by TEXT,
+    confidence INTEGER DEFAULT 80,
+    valid_from TEXT,
+    valid_until TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(key, category)
+  );
 `);
 
 try {
