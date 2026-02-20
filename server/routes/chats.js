@@ -82,22 +82,18 @@ router.post('/messages', (req, res) => {
     const row = db.prepare('SELECT * FROM global_messages WHERE id = ?').get(info.lastInsertRowid);
 
     if (content && content.trim() && role === 'user') {
-      let title = content;
-      if (content.startsWith('@')) {
-        const atEnd = content.indexOf(' ');
-        if (atEnd > 0) {
-          title = content.substring(atEnd + 1);
-        }
-      }
+      let title = content.replace(/^@\S+\s+/, '').trim();
       title = title.substring(0, 50) + (title.length > 50 ? '...' : '');
       
-      memoryManager.recordEvent({
-        eventType: 'conversation',
-        conversationId: task_id,
-        title: title || content.substring(0, 50),
-        content: content,
-        importance: 6,
-      });
+      if (title) {
+        memoryManager.recordEvent({
+          eventType: 'conversation',
+          conversationId: task_id,
+          title,
+          content,
+          importance: 6,
+        });
+      }
     }
 
     res.status(201).json(row);
