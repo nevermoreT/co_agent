@@ -4,6 +4,7 @@ import db from '../db.js';
 import logger from '../logger.js';
 import { runClaudeCli as runClaudeCliImpl } from '../../minimal-claude.js';
 import { runOpencodeCli as runOpencodeCliImpl } from '../../minimal-opencode.js';
+import * as sessionManager from './sessionManager.js';
 import * as memoryManager from './memoryManager.js';
 
 const runs = new Map();
@@ -121,8 +122,8 @@ export function run(agentId, onOutput, onExit) {
  * 调用前由 websocket 确认 agent.builtin_key === 'claude-cli'。
  * 
  * 会话管理：
- * - 使用 agent.session_id 来保持会话上下文
- * - onSession 回调会在检测到新 session ID 时保存到数据库
+ * - 使用 sessionManager 管理每个 agent 在每个对话中的 session
+ * - 使用 memoryManager 提供记忆上下文
  */
 export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) {
   const key = String(agentId);
@@ -145,8 +146,9 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) 
     enrichedPrompt = prompt;
   }
   
-  const sessionId = agent.session_id || null;
-  logger.log('[agentRunner] runClaudeCli() agentId=%s promptLen=%d', agentId, enrichedPrompt.length);
+  const sessionId = sessionManager.getSession(agentId, conversationId);
+  logger.log('[agentRunner] runClaudeCli() agentId=%d convId=%d promptLen=%d sessionId=%s', 
+    agentId, conversationId, enrichedPrompt.length, sessionId || '(none)');
   
   const { child } = runClaudeCliImpl(enrichedPrompt, {
     onOutput,
@@ -156,15 +158,14 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) 
       onExit && onExit(code, signal);
     },
     onSession: (newSessionId) => {
-      if (newSessionId && newSessionId !== sessionId) {
-        logger.log('[agentRunner] saving new session_id for agentId=%s: %s', agentId, newSessionId);
-        db.prepare('UPDATE agents SET session_id = ? WHERE id = ?').run(newSessionId, agentId);
+      if (newSessionId && conversationId) {
+        sessionManager.saveSession(agentId, conversationId, newSessionId);
       }
     },
     sessionId,
     continue: false,
   });
-  runs.set(key, { process: child });
+  runs.set(key, { process: child, conversationId });
   return true;
 }
 
@@ -189,8 +190,9 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId
     enrichedPrompt = prompt;
   }
   
-  const sessionId = agent.session_id || null;
-  logger.log('[agentRunner] runOpencodeCli() agentId=%s promptLen=%d', agentId, enrichedPrompt.length);
+  const sessionId = sessionManager.getSession(agentId, conversationId);
+  logger.log('[agentRunner] runOpencodeCli() agentId=%d convId=%d promptLen=%d sessionId=%s', 
+    agentId, conversationId, enrichedPrompt.length, sessionId || '(none)');
   
   const { child } = runOpencodeCliImpl(enrichedPrompt, {
     onOutput,
@@ -200,14 +202,13 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId
       onExit && onExit(code, signal);
     },
     onSession: (newSessionId) => {
-      if (newSessionId && newSessionId !== sessionId) {
-        logger.log('[agentRunner] saving new session_id for agentId=%s: %s', agentId, newSessionId);
-        db.prepare('UPDATE agents SET session_id = ? WHERE id = ?').run(newSessionId, agentId);
+      if (newSessionId && conversationId) {
+        sessionManager.saveSession(agentId, conversationId, newSessionId);
       }
     },
     sessionId,
     continue: false,
   });
-  runs.set(key, { process: child });
+  runs.set(key, { process: child, conversationId });
   return true;
 }
