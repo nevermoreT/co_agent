@@ -9,6 +9,7 @@ import agentsRouter from './routes/agents.js';
 import tasksRouter from './routes/tasks.js';
 import chatsRouter from './routes/chats.js';
 import statsRouter from './routes/stats.js';
+import sessionsRouter from './routes/sessions.js';
 import logger from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -23,6 +24,7 @@ app.use('/api/agents', agentsRouter);
 app.use('/api/tasks', tasksRouter);
 app.use('/api', chatsRouter);
 app.use('/api/stats', statsRouter);
+app.use('/api/sessions', sessionsRouter);
 
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));

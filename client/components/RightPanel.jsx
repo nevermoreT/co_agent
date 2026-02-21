@@ -4,6 +4,20 @@ import './RightPanel.css';
 const API = '/api';
 const MAX_AGENTS = 5;
 
+function formatSessionTime(isoString) {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  const now = new Date();
+  const diff = now - date;
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  
+  if (hours < 1) return '刚刚';
+  if (hours < 24) return `${hours}小时前`;
+  if (days < 7) return `${days}天前`;
+  return date.toLocaleDateString('zh-CN');
+}
+
 export default function RightPanel({
   agents,
   runningAgentIds,
@@ -13,6 +27,7 @@ export default function RightPanel({
 }) {
   const [messages, setMessages] = useState([]);
   const [stats, setStats] = useState(null);
+  const [sessions, setSessions] = useState([]);
   const [agentForm, setAgentForm] = useState(null);
   const [form, setForm] = useState({ name: '', cli_command: '', cli_cwd: '' });
 
@@ -30,15 +45,25 @@ export default function RightPanel({
   useEffect(() => {
     if (!selectedTaskId) {
       setStats(null);
+      setSessions([]);
       return;
     }
     let cancelled = false;
+    
     fetch(`${API}/stats/messages?task_id=${selectedTaskId}`)
       .then((res) => res.ok ? res.json() : null)
       .then((data) => {
         if (!cancelled) setStats(data);
       })
       .catch(() => { if (!cancelled) setStats(null); });
+    
+    fetch(`${API}/sessions/task/${selectedTaskId}`)
+      .then((res) => res.ok ? res.json() : [])
+      .then((data) => {
+        if (!cancelled) setSessions(Array.isArray(data) ? data : []);
+      })
+      .catch(() => { if (!cancelled) setSessions([]); });
+    
     return () => { cancelled = true; };
   }, [selectedTaskId, messages]);
 
@@ -140,6 +165,34 @@ export default function RightPanel({
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      {selectedTaskId && sessions.length > 0 && (
+        <section className="right-section">
+          <h3>会话状态</h3>
+          <div className="session-list">
+            {sessions.map((s) => (
+              <div key={s.agent_id} className="session-item">
+                <div className="session-header">
+                  <span className="session-agent-name">{s.agent_name}</span>
+                  {runningAgentIds.includes(s.agent_id) && (
+                    <span className="right-badge running">运行中</span>
+                  )}
+                </div>
+                <div className="session-details">
+                  <div className="session-detail">
+                    <span className="session-detail-label">Session</span>
+                    <span className="session-detail-value">{s.session_id?.substring(0, 8)}...</span>
+                  </div>
+                  <div className="session-detail">
+                    <span className="session-detail-label">更新</span>
+                    <span className="session-detail-value">{formatSessionTime(s.updated_at)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 

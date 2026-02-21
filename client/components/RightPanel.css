@@ -374,3 +374,57 @@
   padding: 2px 8px;
   border-radius: var(--radius-xs);
 }
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.session-item {
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.session-item:hover {
+  border-color: var(--border-color);
+}
+
+.session-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.session-agent-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.session-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.session-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+}
+
+.session-detail-label {
+  color: var(--text-muted);
+}
+
+.session-detail-value {
+  color: var(--text-secondary);
+  font-family: 'IBM Plex Mono', monospace;
+}

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import db from '../db.js';
+import * as sessionManager from '../services/sessionManager.js';
 
 const router = Router();
 
@@ -77,6 +78,7 @@ router.delete('/:id', (req, res) => {
   try {
     db.prepare('DELETE FROM global_messages WHERE task_id = ?').run(req.params.id);
     db.prepare('DELETE FROM shared_events WHERE conversation_id = ?').run(req.params.id);
+    sessionManager.deleteTaskSessions(req.params.id);
     const info = db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
     if (info.changes === 0) return res.status(404).json({ error: 'Task not found' });
     res.status(204).send();

@@ -89,6 +89,20 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_events_type ON shared_events(event_type);
   CREATE INDEX IF NOT EXISTS idx_events_conv ON shared_events(conversation_id);
   CREATE INDEX IF NOT EXISTS idx_events_time ON shared_events(created_at);
+
+  CREATE TABLE IF NOT EXISTS agent_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id INTEGER NOT NULL,
+    task_id INTEGER NOT NULL,
+    session_id TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agent_id) REFERENCES agents(id),
+    FOREIGN KEY (task_id) REFERENCES tasks(id),
+    UNIQUE(agent_id, task_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_sessions_agent ON agent_sessions(agent_id);
+  CREATE INDEX IF NOT EXISTS idx_agent_sessions_task ON agent_sessions(task_id);
 `);
 
 try {
