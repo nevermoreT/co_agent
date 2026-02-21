@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useGlobalMessages } from '../hooks/useGlobalMessages';
+import logger from '../utils/logger';
 import './ChatPanel.css';
 
 const API = '/api';
@@ -140,6 +141,10 @@ export default function ChatPanel({
   const send = async () => {
     const text = input.trim();
     if (!text) return;
+    if (!selectedTaskId) {
+      logger.warn('[ChatPanel] No conversation selected, cannot send');
+      return;
+    }
 
     const parsed = parseTargetAgent(text);
 
@@ -173,6 +178,7 @@ export default function ChatPanel({
         // ignore fetch errors
       }
 
+      logger.log('[ChatPanel] sending to agent %d, selectedTaskId=%s', agent.id, selectedTaskId);
       onStart(agent.id);
       onSendText(agent.id, textWithoutMention.trim(), selectedTaskId);
     } else {

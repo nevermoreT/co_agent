@@ -30,6 +30,8 @@ export function setupWebSocket(httpServer) {
       const { action, agentId, text, conversationId } = msg;
       const id = agentId != null ? Number(agentId) : null;
       const convId = conversationId != null ? Number(conversationId) : null;
+      logger.log('[websocket] message: action=%s agentId=%s conversationId=%s (raw: %s) convId=%s', 
+        action, id, conversationId, JSON.stringify(conversationId), convId);
 
       if (action === 'start') {
         if (id == null || Number.isNaN(id)) {
