@@ -70,6 +70,39 @@ db.exec(`
     FOREIGN KEY (task_id) REFERENCES tasks(id)
   );
   CREATE INDEX IF NOT EXISTS idx_global_created ON global_messages(created_at);
+
+  CREATE TABLE IF NOT EXISTS shared_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    source_agent_id INTEGER,
+    source_agent_name TEXT,
+    conversation_id INTEGER,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    summary TEXT,
+    metadata TEXT,
+    importance INTEGER DEFAULT 5,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (source_agent_id) REFERENCES agents(id),
+    FOREIGN KEY (conversation_id) REFERENCES tasks(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_events_type ON shared_events(event_type);
+  CREATE INDEX IF NOT EXISTS idx_events_conv ON shared_events(conversation_id);
+  CREATE INDEX IF NOT EXISTS idx_events_time ON shared_events(created_at);
+
+  CREATE TABLE IF NOT EXISTS agent_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id INTEGER NOT NULL,
+    task_id INTEGER NOT NULL,
+    session_id TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (agent_id) REFERENCES agents(id),
+    FOREIGN KEY (task_id) REFERENCES tasks(id),
+    UNIQUE(agent_id, task_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_sessions_agent ON agent_sessions(agent_id);
+  CREATE INDEX IF NOT EXISTS idx_agent_sessions_task ON agent_sessions(task_id);
 `);
 
 try {
@@ -81,6 +114,27 @@ try {
 
 try {
   db.run('ALTER TABLE agents ADD COLUMN session_id TEXT');
+  save();
+} catch {
+  // column already exists
+}
+
+try {
+  db.run('ALTER TABLE tasks ADD COLUMN group_name TEXT');
+  save();
+} catch {
+  // column already exists
+}
+
+try {
+  db.run('ALTER TABLE tasks ADD COLUMN last_activity_at TEXT');
+  save();
+} catch {
+  // column already exists
+}
+
+try {
+  db.run('ALTER TABLE tasks ADD COLUMN is_archived INTEGER DEFAULT 0');
   save();
 } catch {
   // column already exists

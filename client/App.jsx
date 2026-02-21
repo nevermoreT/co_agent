@@ -107,6 +107,7 @@ export default function App() {
           runningAgentIds={runningAgentIds}
           wsReady={ready}
           refetchAgents={refetchAgents}
+          selectedTaskId={selectedTaskId}
         />
       </aside>
     </div>
