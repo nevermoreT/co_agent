@@ -161,7 +161,7 @@ export function buildAgentContext(agentId, conversationId) {
   if (!conversationId) {
     return '';
   }
-  
+
   const knowledge = getKnowledge();
   const recentEvents = getEvents({
     conversationId,
@@ -174,12 +174,12 @@ export function buildAgentContext(agentId, conversationId) {
   }
 
   const parts = [];
-  
+
   if (recentEvents.length > 0) {
-    parts.push('之前用户问过:');
+    parts.push('之前用户问过');
     parts.push(...recentEvents.map(e => {
       const title = e.title.length > 30 ? e.title.substring(0, 30) + '...' : e.title;
-      return `"${title}"`;
+      return title;
     }));
   }
 

@@ -137,19 +137,21 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) 
     onExit && onExit(-1, 'agent not found or not claude-cli');
     return false;
   }
-  
+
+  // 构建上下文，避免使用括号和引号（Windows shell 特殊字符会导致 prompt 丢失）
+  // 详见 doc/bugfix-windows-shell-special-chars.md
   const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
   let enrichedPrompt;
   if (memoryContext) {
-    enrichedPrompt = `请回答: ${prompt} (背景: ${memoryContext})`;
+    enrichedPrompt = `${prompt} - 上下文: ${memoryContext}`;
   } else {
     enrichedPrompt = prompt;
   }
-  
+
   const sessionId = sessionManager.getSession(agentId, conversationId);
-  logger.log('[agentRunner] runClaudeCli() agentId=%d convId=%d promptLen=%d sessionId=%s', 
-    agentId, conversationId, enrichedPrompt.length, sessionId || '(none)');
-  
+  logger.log('[agentRunner] runClaudeCli() agentId=%d convId=%d promptLen=%d sessionId=%s',
+    agentId, conversationId, enrichedPrompt.length, sessionId || '(new)');
+
   const { child } = runClaudeCliImpl(enrichedPrompt, {
     onOutput,
     onExit: (code, signal) => {
@@ -185,14 +187,15 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId
   const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
   let enrichedPrompt;
   if (memoryContext) {
-    enrichedPrompt = `请回答: ${prompt} (背景: ${memoryContext})`;
+    // 避免使用括号和引号（Windows shell 特殊字符）
+    enrichedPrompt = `${prompt} - 上下文: ${memoryContext}`;
   } else {
     enrichedPrompt = prompt;
   }
-  
+
   const sessionId = sessionManager.getSession(agentId, conversationId);
-  logger.log('[agentRunner] runOpencodeCli() agentId=%d convId=%d promptLen=%d sessionId=%s', 
-    agentId, conversationId, enrichedPrompt.length, sessionId || '(none)');
+  logger.log('[agentRunner] runOpencodeCli() agentId=%d convId=%d promptLen=%d sessionId=%s',
+    agentId, conversationId, enrichedPrompt.length, sessionId || '(new)');
   
   const { child } = runOpencodeCliImpl(enrichedPrompt, {
     onOutput,

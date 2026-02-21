@@ -56,15 +56,15 @@ function parseNdjsonLine(line, onOutput, onSession) {
   if (!raw) return;
   try {
     const obj = JSON.parse(raw);
-    
+
     if (obj.type === 'system' && obj.session_id) {
       onSession && onSession(obj.session_id);
     }
-    
+
     if (obj.type === 'result' && obj.session_id) {
       onSession && onSession(obj.session_id);
     }
-    
+
     if (obj.type === 'assistant' && obj.message?.content) {
       for (const block of obj.message.content) {
         if (block.type === 'text' && block.text) {
@@ -249,68 +249,25 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
 
   const workDir = cwd || process.cwd();
 
-  if (ptySpawn) {
-    const cmdArgs = [...args, '-p', prompt || ''];
-    
-    if (isWin) {
-      const cmdStr = 'claude ' + cmdArgs.map(escapeForShell).join(' ');
-      console.log('[minimal-claude] PTY command:', cmdStr);
-      
-      const ptyProcess = ptySpawn(process.env.COMSPEC || 'cmd.exe', ['/c', cmdStr], {
-        name: 'xterm-256color',
-        cols: 8192,
-        rows: 24,
-        cwd: workDir,
-        env: process.env,
-      });
-      const stdoutBuf = { current: '' };
-      const lineNumber = { val: 0 };
-      ptyProcess.on('data', (data) => {
-        processPtyData(data, stdoutBuf, onOutput, onSession, lineNumber);
-      });
-      ptyProcess.on('exit', (code, signal) => {
-        if (stdoutBuf.current.trim()) {
-          const { objects } = extractJsonObjects(stdoutBuf.current);
-          for (const obj of objects) parseNdjsonLine(obj, onOutput, onSession);
-        }
-        onExit && onExit(code ?? -1, signal);
-      });
-      console.log('[minimal-claude] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
-      return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
-    } else {
-      const ptyProcess = ptySpawn('claude', cmdArgs, {
-        name: 'xterm-256color',
-        cols: 8192,
-        rows: 24,
-        cwd: workDir,
-        env: process.env,
-      });
-      const stdoutBuf = { current: '' };
-      const lineNumber = { val: 0 };
-      ptyProcess.on('data', (data) => {
-        processPtyData(data, stdoutBuf, onOutput, onSession, lineNumber);
-      });
-      ptyProcess.on('exit', (code, signal) => {
-        if (stdoutBuf.current.trim()) {
-          const { objects } = extractJsonObjects(stdoutBuf.current);
-          for (const obj of objects) parseNdjsonLine(obj, onOutput, onSession);
-        }
-        onExit && onExit(code ?? -1, signal);
-      });
-      console.log('[minimal-claude] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
-      return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
-    }
-  }
+  // 直接使用 spawn，不使用 PTY（PTY 在 Windows 上处理中文有问题）
+  const cmdArgs = [...args, '-p', prompt || ''];
+  console.log('[minimal-claude] spawn command: claude', JSON.stringify(cmdArgs));
+  console.log('[minimal-claude] Working directory:', workDir);
 
-  const child = spawn('claude', [...args, '-p', prompt || ''], { 
-    stdio: ['inherit', 'pipe', 'pipe'], 
-    cwd: workDir 
+  const child = spawn('claude', cmdArgs, {
+    stdio: ['inherit', 'pipe', 'pipe'],
+    cwd: workDir,
+    shell: true,  // Windows 上需要 shell: true 来调用 .cmd 文件
   });
 
   let stdoutBuf = '';
+  let chunkNum = 0;
   child.stdout.on('data', (chunk) => {
-    const s = stdoutBuf + chunk.toString();
+    const data = chunk.toString();
+    const s = stdoutBuf + data;
     const { objects, remaining } = extractJsonObjects(s);
+    console.log('[minimal-claude] chunk %d: %d chars, %d JSON objects, buffer %d chars',
+      chunkNum++, data.length, objects.length, remaining.length);
     for (const obj of objects) {
       parseNdjsonLine(obj, onOutput, onSession);
     }
@@ -334,7 +291,7 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
   child.on('exit', (code, signal) => {
     onExit && onExit(code ?? -1, signal);
   });
-  console.log('[minimal-claude] spawn (no PTY) pid:', child.pid, sessionConfig.logInfo);
+  console.log('[minimal-claude] spawn pid:', child.pid, sessionConfig.logInfo);
   return { child };
 }
 
