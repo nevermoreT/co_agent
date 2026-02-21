@@ -141,6 +141,7 @@ export default function ChatPanel({
   const send = async () => {
     const text = input.trim();
     if (!text) return;
+    logger.log('[ChatPanel] send() called, selectedTaskId=%s', selectedTaskId);
     if (!selectedTaskId) {
       logger.warn('[ChatPanel] No conversation selected, cannot send');
       return;
