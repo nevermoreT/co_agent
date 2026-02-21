@@ -174,27 +174,29 @@ const messageStats = {
 
 ---
 
+---
+
 ## 实现计划
 
-### Phase 1: 对话管理增强 (2-3h)
-1. [ ] 后端：添加 unread_count 字段
-2. [ ] 后端：实现消息预览 API
-3. [ ] 前端：未读消息徽章
-4. [ ] 前端：消息预览显示
-5. [ ] 前端：新建对话按钮
-6. [ ] 前端：右键菜单（重命名、删除）
+### Phase 1: 对话管理增强 (2-3h) ✅ 已完成
+1. [x] 后端：添加 unread_count 字段
+2. [x] 后端：实现消息预览 API
+3. [x] 前端：未读消息徽章
+4. [x] 前端：消息预览显示
+5. [x] 前端：新建对话按钮
+6. [x] 前端：右键菜单（重命名、删除）
 
-### Phase 2: Session 管理面板 (2-3h)
-1. [ ] 前端：重构 RightPanel 布局
-2. [ ] 前端：添加状态栏组件
-3. [ ] 前端：添加 Session Info 组件
-4. [ ] 后端：session 状态 API
-5. [ ] WebSocket：推送状态变更
+### Phase 2: Session 管理 (2-3h) ✅ 已完成
+1. [x] 数据库：创建 agent_sessions 表
+2. [x] 后端：sessionManager 服务
+3. [x] 后端：agentRunner 使用对话级 session
+4. [x] 后端：session API
+5. [x] 前端：RightPanel 显示 session 信息
 
-### Phase 3: 消息统计 (1-2h)
-1. [ ] 后端：消息统计 API
-2. [ ] 前端：统计卡片组件
-3. [ ] 前端：集成到 RightPanel
+### Phase 3: 消息统计 (1-2h) ✅ 已完成
+1. [x] 后端：消息统计 API
+2. [x] 前端：统计卡片组件
+3. [x] 前端：集成到 RightPanel
 
 ### Phase 4: 优化打磨 (1h)
 1. [ ] 样式调整
