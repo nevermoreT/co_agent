@@ -5,7 +5,6 @@ import logger from '../logger.js';
 import { runClaudeCli as runClaudeCliImpl } from '../../minimal-claude.js';
 import { runOpencodeCli as runOpencodeCliImpl } from '../../minimal-opencode.js';
 import * as sessionManager from './sessionManager.js';
-import * as memoryManager from './memoryManager.js';
 
 const runs = new Map();
 
@@ -130,19 +129,11 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) 
     return false;
   }
   
-  const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
-  let enrichedPrompt;
-  if (memoryContext) {
-    enrichedPrompt = `请回答: ${prompt} (背景: ${memoryContext})`;
-  } else {
-    enrichedPrompt = prompt;
-  }
-  
   const sessionId = sessionManager.getSession(agentId, conversationId);
   logger.log('[agentRunner] runClaudeCli() agentId=%d convId=%d promptLen=%d sessionId=%s', 
-    agentId, conversationId, enrichedPrompt.length, sessionId || '(none)');
+    agentId, conversationId, prompt.length, sessionId || '(none)');
   
-  const { child } = runClaudeCliImpl(enrichedPrompt, {
+  const { child } = runClaudeCliImpl(prompt, {
     onOutput,
     onExit: (code, signal) => {
       logger.log('[agentRunner] runClaudeCli() exit: agentId=%s code=%s signal=%s', agentId, code, signal);
@@ -174,19 +165,11 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId
     return false;
   }
   
-  const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
-  let enrichedPrompt;
-  if (memoryContext) {
-    enrichedPrompt = `请回答: ${prompt} (背景: ${memoryContext})`;
-  } else {
-    enrichedPrompt = prompt;
-  }
-  
   const sessionId = sessionManager.getSession(agentId, conversationId);
   logger.log('[agentRunner] runOpencodeCli() agentId=%d convId=%d promptLen=%d sessionId=%s', 
-    agentId, conversationId, enrichedPrompt.length, sessionId || '(none)');
+    agentId, conversationId, prompt.length, sessionId || '(none)');
   
-  const { child } = runOpencodeCliImpl(enrichedPrompt, {
+  const { child } = runOpencodeCliImpl(prompt, {
     onOutput,
     onExit: (code, signal) => {
       logger.log('[agentRunner] runOpencodeCli() exit: agentId=%s code=%s signal=%s', agentId, code, signal);
