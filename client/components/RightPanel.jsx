@@ -9,13 +9,29 @@ function formatSessionTime(isoString) {
   const date = new Date(isoString);
   const now = new Date();
   const diff = now - date;
+  const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
   
-  if (hours < 1) return '刚刚';
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes}分钟前`;
   if (hours < 24) return `${hours}小时前`;
   if (days < 7) return `${days}天前`;
   return date.toLocaleDateString('zh-CN');
+}
+
+function generateFakeTokenStats(sessionId) {
+  const hash = sessionId ? sessionId.split('').reduce((a, c) => a + c.charCodeAt(0), 0) : 0;
+  const inputTokens = 10000 + (hash % 50000);
+  const outputTokens = 100 + (hash % 500);
+  const cachePercent = 85 + (hash % 15);
+  return { inputTokens, outputTokens, cachePercent };
+}
+
+function formatTokens(num) {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+  return num.toString();
 }
 
 export default function RightPanel({
@@ -25,22 +41,10 @@ export default function RightPanel({
   refetchAgents,
   selectedTaskId,
 }) {
-  const [messages, setMessages] = useState([]);
   const [stats, setStats] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [agentForm, setAgentForm] = useState(null);
   const [form, setForm] = useState({ name: '', cli_command: '', cli_cwd: '' });
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`${API}/messages?limit=50`)
-      .then((res) => res.ok ? res.json() : [])
-      .then((data) => {
-        if (!cancelled) setMessages(Array.isArray(data) ? data : []);
-      })
-      .catch(() => { if (!cancelled) setMessages([]); });
-    return () => { cancelled = true; };
-  }, []);
 
   useEffect(() => {
     if (!selectedTaskId) {
@@ -65,7 +69,7 @@ export default function RightPanel({
       .catch(() => { if (!cancelled) setSessions([]); });
     
     return () => { cancelled = true; };
-  }, [selectedTaskId, messages]);
+  }, [selectedTaskId]);
 
   const openNewAgent = () => {
     setAgentForm('new');
@@ -155,43 +159,57 @@ export default function RightPanel({
               <span className="stat-label">AI</span>
             </div>
           </div>
-          {stats.byAgent && Object.keys(stats.byAgent).length > 0 && (
-            <div className="stats-agents">
-              {Object.entries(stats.byAgent).map(([name, count]) => (
-                <div key={name} className="stat-agent">
-                  <span className="stat-agent-name">{name}</span>
-                  <span className="stat-agent-count">{count}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </section>
       )}
 
-      {selectedTaskId && sessions.length > 0 && (
+      {selectedTaskId && (
         <section className="right-section">
-          <h3>会话状态</h3>
+          <div className="section-header">
+            <h3>Session Chain</h3>
+            <span className="session-count">{sessions.length} sessions</span>
+          </div>
           <div className="session-list">
-            {sessions.map((s) => (
-              <div key={s.agent_id} className="session-item">
-                <div className="session-header">
-                  <span className="session-agent-name">{s.agent_name}</span>
-                  {runningAgentIds.includes(s.agent_id) && (
-                    <span className="right-badge running">运行中</span>
-                  )}
-                </div>
-                <div className="session-details">
-                  <div className="session-detail">
-                    <span className="session-detail-label">Session</span>
-                    <span className="session-detail-value">{s.session_id?.substring(0, 8)}...</span>
+            {sessions.length === 0 && (
+              <div className="session-empty">暂无活跃会话</div>
+            )}
+            {sessions.map((s) => {
+              const tokenStats = generateFakeTokenStats(s.session_id);
+              const isActive = runningAgentIds.includes(s.agent_id);
+              
+              return (
+                <div key={s.agent_id} className={`session-item ${isActive ? 'active' : ''}`}>
+                  <div className="session-header">
+                    <div className="session-status">
+                      <span className={`session-dot ${isActive ? 'running' : ''}`} />
+                      <span className="session-status-text">{isActive ? 'ACTIVE' : 'IDLE'}</span>
+                    </div>
+                    <span className="session-number">#{s.agent_id}</span>
                   </div>
-                  <div className="session-detail">
-                    <span className="session-detail-label">更新</span>
-                    <span className="session-detail-value">{formatSessionTime(s.updated_at)}</span>
+                  <div className="session-name">{s.agent_name}</div>
+                  <div className="session-id">{s.session_id?.substring(0, 8)}...{s.session_id?.substring(s.session_id.length - 4)}</div>
+                  <div className="session-meta">
+                    <span>Started {formatSessionTime(s.created_at)}</span>
+                  </div>
+                  <div className="session-stats">
+                    <div className="session-stat">
+                      <span className="session-stat-label">Input</span>
+                      <span className="session-stat-value">{formatTokens(tokenStats.inputTokens)}</span>
+                    </div>
+                    <div className="session-stat">
+                      <span className="session-stat-label">Output</span>
+                      <span className="session-stat-value">{formatTokens(tokenStats.outputTokens)}</span>
+                    </div>
+                    <div className="session-stat">
+                      <span className="session-stat-label">Cache</span>
+                      <span className="session-stat-value cache">{tokenStats.cachePercent}%</span>
+                    </div>
+                  </div>
+                  <div className="session-progress">
+                    <div className="session-progress-bar" style={{ width: `${tokenStats.cachePercent}%` }} />
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -222,23 +240,6 @@ export default function RightPanel({
             ))}
           </ul>
         )}
-      </section>
-
-      <section className="right-section right-section-history">
-        <h3>最近消息</h3>
-        <div className="right-history">
-          {messages.length === 0 && (
-            <p className="right-history-empty">暂无记录</p>
-          )}
-          {(messages || []).filter(Boolean).slice(-10).reverse().map((m) => (
-            <div key={m.id} className={`right-history-msg ${m.role || 'assistant'}`}>
-              <span className="right-history-role">
-                {m.role === 'user' ? '用户' : `@${m.agent_name || 'Agent'}`}
-              </span>
-              <pre className="right-history-content">{(m.content ?? '').slice(0, 100)}{(m.content ?? '').length > 100 ? '...' : ''}</pre>
-            </div>
-          ))}
-        </div>
       </section>
 
       {agentForm && (
