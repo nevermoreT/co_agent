@@ -1,6 +1,10 @@
 import db from '../db.js';
 import logger from '../logger.js';
 
+function isoNow() {
+  return new Date().toISOString();
+}
+
 export function getSession(agentId, taskId) {
   if (!agentId || !taskId) return null;
   
@@ -21,13 +25,14 @@ export function saveSession(agentId, taskId, sessionId) {
     
     if (existing) {
       db.prepare(
-        'UPDATE agent_sessions SET session_id = ?, updated_at = datetime(\'now\') WHERE agent_id = ? AND task_id = ?'
-      ).run(sessionId, agentId, taskId);
+        'UPDATE agent_sessions SET session_id = ?, updated_at = ? WHERE agent_id = ? AND task_id = ?'
+      ).run(sessionId, isoNow(), agentId, taskId);
       logger.log('[sessionManager] updated session: agent=%d task=%d session=%s', agentId, taskId, sessionId);
     } else {
+      const now = isoNow();
       db.prepare(
-        'INSERT INTO agent_sessions (agent_id, task_id, session_id) VALUES (?, ?, ?)'
-      ).run(agentId, taskId, sessionId);
+        'INSERT INTO agent_sessions (agent_id, task_id, session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+      ).run(agentId, taskId, sessionId, now, now);
       logger.log('[sessionManager] created session: agent=%d task=%d session=%s', agentId, taskId, sessionId);
     }
     return true;

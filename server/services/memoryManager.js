@@ -157,33 +157,70 @@ export function upsertKnowledge({
   }
 }
 
+/**
+ * 构建 Agent 上下文，包含最近的对话历史
+ * 格式：用户问AgentA xxx, AgentA回答 yyy; 用户问AgentB zzz, AgentB回答 www
+ *
+ * 注意：避免使用括号()和引号""，这些字符在 Windows shell 中会导致问题
+ * 详见 doc/bugfix-windows-shell-special-chars.md
+ */
 export function buildAgentContext(agentId, conversationId) {
   if (!conversationId) {
     return '';
   }
 
-  const knowledge = getKnowledge();
-  const recentEvents = getEvents({
-    conversationId,
-    limit: 3,
-    minImportance: 3,
-  });
+  // 从 global_messages 获取最近的对话（包含问答对）
+  const recentMessages = db.prepare(`
+    SELECT role, content, agent_name
+    FROM global_messages
+    WHERE task_id = ?
+    ORDER BY created_at DESC
+    LIMIT 10
+  `).all(conversationId);
 
-  if (recentEvents.length === 0 && knowledge.length === 0) {
+  if (recentMessages.length === 0) {
     return '';
   }
 
-  const parts = [];
+  // 反转顺序，让最早的消息在前
+  recentMessages.reverse();
 
-  if (recentEvents.length > 0) {
-    parts.push('之前用户问过');
-    parts.push(...recentEvents.map(e => {
-      const title = e.title.length > 30 ? e.title.substring(0, 30) + '...' : e.title;
-      return title;
-    }));
+  // 构建对话摘要，将问答配对
+  const dialogues = [];
+  for (let i = 0; i < recentMessages.length; i++) {
+    const msg = recentMessages[i];
+    if (msg.role === 'user') {
+      // 提取用户问题（去掉 @AgentName 前缀）
+      let question = msg.content.replace(/^@[\w\s]+\s+/, '').trim();
+      if (question.length > 50) {
+        question = question.substring(0, 50) + '...';
+      }
+
+      const targetAgent = msg.agent_name || '未知';
+
+      // 查找下一条是否是对应的回答
+      const nextMsg = recentMessages[i + 1];
+      if (nextMsg && nextMsg.role === 'assistant') {
+        let answer = nextMsg.content.trim();
+        if (answer.length > 100) {
+          answer = answer.substring(0, 100) + '...';
+        }
+        const responder = nextMsg.agent_name || '未知';
+        dialogues.push(`用户问${targetAgent}: ${question}, ${responder}回答: ${answer}`);
+        i++; // 跳过已处理的回答
+      } else {
+        dialogues.push(`用户问${targetAgent}: ${question}`);
+      }
+    }
   }
 
-  return parts.join(' ');
+  if (dialogues.length === 0) {
+    return '';
+  }
+
+  // 只取最近 3 轮对话，避免上下文过长
+  const recentDialogues = dialogues.slice(-3);
+  return '最近对话 - ' + recentDialogues.join('; ');
 }
 
 export function deleteKnowledge(category, key) {

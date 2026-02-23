@@ -174,9 +174,11 @@ export default function ChatPanel({
         if (res.ok) {
           const data = await res.json();
           addMessage(data);
+        } else {
+          logger.error('[ChatPanel] Failed to save user message:', res.status, res.statusText);
         }
-      } catch {
-        // ignore fetch errors
+      } catch (err) {
+        logger.error('[ChatPanel] Error saving user message:', err);
       }
 
       logger.log('[ChatPanel] sending to agent %d, selectedTaskId=%s', agent.id, selectedTaskId);
@@ -198,9 +200,11 @@ export default function ChatPanel({
         if (res.ok) {
           const data = await res.json();
           addMessage(data);
+        } else {
+          logger.error('[ChatPanel] Failed to save note message:', res.status, res.statusText);
         }
-      } catch {
-        // ignore fetch errors
+      } catch (err) {
+        logger.error('[ChatPanel] Error saving note message:', err);
       }
     }
   };

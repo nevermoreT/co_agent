@@ -56,16 +56,98 @@ function stripAnsi(s) {
  * @param {Function} onOutput - 输出回调 (stream, data)
  * @param {Function} onSession - 会话回调 (sessionId)
  */
+/**
+ * 获取 opencode 最新的 session ID（通过 opencode session list）
+ * @returns {Promise<string|null>} session ID 或 null
+ */
+async function getLatestSessionId(cwd) {
+  return new Promise((resolve) => {
+    const isWin = process.platform === 'win32';
+    
+    const child = isWin
+      ? spawn('opencode session list --format json', [], { stdio: ['pipe', 'pipe', 'pipe'], shell: true, cwd })
+      : spawn('opencode', ['session', 'list', '--format', 'json'], { stdio: ['pipe', 'pipe', 'pipe'], cwd });
+    
+    let stdout = '';
+    child.stdout.on('data', (data) => { stdout += data.toString(); });
+    child.on('exit', (code) => {
+      console.log('[minimal-opencode] getLatestSessionId: code=%d stdout=%d chars', code, stdout.length);
+      console.log('[minimal-opencode] session list RAW OUTPUT:\n', stdout);
+      
+      try {
+        // 尝试解析为 JSON 数组
+        if (stdout.trim().startsWith('[')) {
+          const arr = JSON.parse(stdout);
+          if (Array.isArray(arr) && arr.length > 0) {
+            const latest = arr[0];
+            const sid = latest.id || latest.session_id;
+            if (sid && typeof sid === 'string') {
+              console.log('[minimal-opencode] getLatestSessionId: found from array %s', sid);
+              resolve(sid);
+              return;
+            }
+          }
+        }
+        
+        // 尝试按行解析 NDJSON
+        const lines = stdout.split('\n').filter(l => l.trim());
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          try {
+            const obj = JSON.parse(line);
+            console.log('[minimal-opencode] getLatestSessionId line %d: type=%s keys=%s', i, obj.type, Object.keys(obj).join(','));
+            let sid = obj.id || obj.session_id;
+            if (sid && typeof sid === 'string') {
+              console.log('[minimal-opencode] getLatestSessionId: found %s', sid);
+              resolve(sid);
+              return;
+            }
+          } catch {
+            // 继续尝试下一行
+          }
+        }
+      } catch (e) {
+        console.log('[minimal-opencode] getLatestSessionId parse error:', e.message);
+      }
+      resolve(null);
+    });
+    child.on('error', (err) => {
+      console.log('[minimal-opencode] getLatestSessionId error:', err.message);
+      resolve(null);
+    });
+    setTimeout(() => {
+      child.kill();
+      resolve(null);
+    }, 10000);
+  });
+}
+
 function parseNdjsonLine(line, onOutput, onSession) {
   const raw = stripAnsi(line);
   if (!raw) return;
+  
   try {
     const obj = JSON.parse(raw);
-    // 检测 session 事件，提取 session ID
-    if (obj.type === 'session' && obj.id) {
-      console.log('[minimal-opencode] detected session:', obj.id);
-      onSession && onSession(obj.id);
-    } else if (obj.type === 'text' && obj.part?.text) {
+    
+    // 打印完整的原始 JSON 用于调试
+    console.log('[minimal-opencode] RAW JSON:', JSON.stringify(obj));
+    
+    // 检测 session ID - 支持多种格式
+    let sessionId = null;
+    if (obj.type === 'session') {
+      sessionId = obj.id || obj.session_id;
+    } else if (obj.session_id) {
+      sessionId = obj.session_id;
+    } else if (obj.id && typeof obj.id === 'string' && obj.id.length > 10) {
+      sessionId = obj.id;
+    }
+    if (sessionId) {
+      console.log('[minimal-opencode] detected session:', sessionId);
+      onSession && onSession(sessionId);
+    }
+    
+    // 文本输出
+    if (obj.type === 'text' && obj.part?.text) {
       onOutput('stdout', obj.part.text);
     } else if (obj.type === 'tool_use' && obj.part?.state?.output) {
       const toolName = obj.part.tool || 'tool';
@@ -73,10 +155,22 @@ function parseNdjsonLine(line, onOutput, onSession) {
       onOutput('stdout', `\n[${title}]\n${obj.part.state.output}\n`);
     } else if (obj.type === 'permission_request') {
       onOutput('stderr', `[权限请求] ${obj.description || JSON.stringify(obj)}\n`);
+    } else if (obj.type === 'step_start' || obj.type === 'step_finish') {
+      // 步骤事件，不需要特殊处理
+    } else if (obj.message) {
+      // 兼容 { message: '...' } 格式
+      if (typeof obj.message === 'string') {
+        onOutput('stdout', obj.message);
+      } else if (obj.message.content) {
+        onOutput('stdout', obj.message.content);
+      }
     }
   } catch {
     if (raw.includes('permission') || raw.includes('confirm') || raw.includes('[Y/n]') || raw.includes('?')) {
       onOutput('stderr', `[交互提示] ${raw}\n`);
+    } else if (raw.startsWith('{') || raw.startsWith('[')) {
+      // 记录无法解析的 JSON（调试用）
+      console.log('[minimal-opencode] unparseable JSON:', raw.substring(0, 200));
     }
   }
 }
@@ -156,6 +250,11 @@ export function runOpencodeCli(prompt, { onOutput, onExit, onSession, continue: 
   const isWin = process.platform === 'win32';
   
   const sessionConfig = buildSessionArgs({ continue: shouldContinue, sessionId });
+  let sessionDetected = false;
+  const wrappedOnSession = (sid) => {
+    sessionDetected = true;
+    onSession && onSession(sid);
+  };
   
   const escapeForShell = (arg) => {
     if (!arg) return '""';
@@ -168,6 +267,23 @@ export function runOpencodeCli(prompt, { onOutput, onExit, onSession, continue: 
 
   const baseArgs = ['run', ...sessionConfig.args, '--format', 'json'];
   const workDir = cwd || process.cwd();
+
+  const handleExit = async (code, signal) => {
+    if (!sessionDetected && !sessionId) {
+      console.log('[minimal-opencode] no session detected, trying to get from session list...');
+      const latestSession = await getLatestSessionId(workDir);
+      if (latestSession) {
+        console.log('[minimal-opencode] got session from list:', latestSession);
+        onSession && onSession(latestSession);
+      }
+    }
+    onExit && onExit(code ?? -1, signal);
+  };
+
+  // 打印完整 prompt 用于调试
+  console.log('[minimal-opencode] FULL PROMPT (%d chars):', prompt?.length || 0);
+  console.log(prompt);
+  console.log('[minimal-opencode] session config:', sessionConfig.logInfo);
 
   if (ptySpawn) {
     const file = isWin ? (process.env.COMSPEC || 'cmd.exe') : 'opencode';
@@ -186,11 +302,11 @@ export function runOpencodeCli(prompt, { onOutput, onExit, onSession, continue: 
       });
       const stdoutBuf = { current: '' };
       ptyProcess.on('data', (data) => {
-        processPtyData(data, stdoutBuf, onOutput, onSession);
+        processPtyData(data, stdoutBuf, onOutput, wrappedOnSession);
       });
       ptyProcess.on('exit', (code, signal) => {
-        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
-        onExit && onExit(code ?? -1, signal);
+        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, wrappedOnSession);
+        handleExit(code, signal);
       });
       console.log('[minimal-opencode] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
       return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
@@ -207,11 +323,11 @@ export function runOpencodeCli(prompt, { onOutput, onExit, onSession, continue: 
       });
       const stdoutBuf = { current: '' };
       ptyProcess.on('data', (data) => {
-        processPtyData(data, stdoutBuf, onOutput, onSession);
+        processPtyData(data, stdoutBuf, onOutput, wrappedOnSession);
       });
       ptyProcess.on('exit', (code, signal) => {
-        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
-        onExit && onExit(code ?? -1, signal);
+        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, wrappedOnSession);
+        handleExit(code, signal);
       });
       console.log('[minimal-opencode] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
       return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
@@ -231,10 +347,10 @@ export function runOpencodeCli(prompt, { onOutput, onExit, onSession, continue: 
     const s = stdoutBuf + chunk.toString();
     const lines = s.split(/\r?\n/);
     stdoutBuf = lines.pop() ?? '';
-    for (const line of lines) parseNdjsonLine(line, onOutput, onSession);
+    for (const line of lines) parseNdjsonLine(line, onOutput, wrappedOnSession);
   });
   child.stdout.on('end', () => {
-    if (stdoutBuf) parseNdjsonLine(stdoutBuf, onOutput, onSession);
+    if (stdoutBuf) parseNdjsonLine(stdoutBuf, onOutput, wrappedOnSession);
   });
   child.stderr.on('data', (chunk) => onOutput('stderr', chunk.toString()));
   child.on('error', (err) => {
@@ -243,10 +359,10 @@ export function runOpencodeCli(prompt, { onOutput, onExit, onSession, continue: 
     } else {
       onOutput('stderr', err.message + '\n');
     }
-    onExit && onExit(-1, err.message);
+    handleExit(-1, err.message);
   });
   child.on('exit', (code, signal) => {
-    onExit && onExit(code ?? -1, signal);
+    handleExit(code, signal);
   });
   console.log('[minimal-opencode] spawn (no PTY) pid:', child.pid, sessionConfig.logInfo);
   return { child };

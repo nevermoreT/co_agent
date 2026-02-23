@@ -16,8 +16,12 @@ export function setupWebSocket(httpServer) {
       }
     };
 
-    ws.on('error', () => {});
-    ws.on('close', () => {});
+    ws.on('error', (err) => {
+      logger.error('[websocket] WebSocket error:', err);
+    });
+    ws.on('close', () => {
+      logger.log('[websocket] Client disconnected');
+    });
 
     ws.on('message', (raw) => {
       let msg;

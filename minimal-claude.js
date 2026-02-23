@@ -57,6 +57,9 @@ function parseNdjsonLine(line, onOutput, onSession) {
   try {
     const obj = JSON.parse(raw);
 
+    // 打印完整的原始 JSON 用于调试
+    console.log('[minimal-claude] RAW JSON:', JSON.stringify(obj));
+
     if (obj.type === 'system' && obj.session_id) {
       onSession && onSession(obj.session_id);
     }
@@ -228,9 +231,9 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
  */
 export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: shouldContinue = true, sessionId, cwd } = {}) {
   const isWin = process.platform === 'win32';
-  
+
   const sessionConfig = buildSessionArgs({ continue: shouldContinue, sessionId });
-  
+
   const escapeForShell = (arg) => {
     if (!arg) return '""';
     const escaped = arg.replace(/\n/g, ' ').replace(/\r/g, '');
@@ -249,15 +252,21 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
 
   const workDir = cwd || process.cwd();
 
-  // 直接使用 spawn，不使用 PTY（PTY 在 Windows 上处理中文有问题）
-  const cmdArgs = [...args, '-p', prompt || ''];
-  console.log('[minimal-claude] spawn command: claude', JSON.stringify(cmdArgs));
+  // 打印完整 prompt 用于调试
+  console.log('[minimal-claude] FULL PROMPT (%d chars):', prompt?.length || 0);
+  console.log(prompt);
+
+  // Windows 上需要 shell: true 来调用 .cmd 文件，但需要正确转义参数
+  const escapedPrompt = (prompt || '').replace(/"/g, '""');
+  const cmdArgs = [...args, '-p', escapedPrompt];
+  const cmdStr = `claude ${cmdArgs.map(a => `"${a}"`).join(' ')}`;
+  console.log('[minimal-claude] spawn command (truncated for display):', cmdStr.substring(0, 300) + '...');
   console.log('[minimal-claude] Working directory:', workDir);
 
-  const child = spawn('claude', cmdArgs, {
+  const child = spawn(cmdStr, [], {
     stdio: ['inherit', 'pipe', 'pipe'],
     cwd: workDir,
-    shell: true,  // Windows 上需要 shell: true 来调用 .cmd 文件
+    shell: true,
   });
 
   let stdoutBuf = '';
