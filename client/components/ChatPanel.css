@@ -187,11 +187,38 @@
   font-weight: var(--font-normal);
 }
 
+/* Markdown 内容容器样式 */
+.chat-msg-content.markdown-content {
+  white-space: normal;
+}
+
+.chat-msg-content.markdown-content .markdown-renderer {
+  max-width: 100%;
+}
+
+.chat-msg-content.markdown-content .markdown-renderer p {
+  margin: 0.5em 0;
+}
+
+.chat-msg-content.markdown-content .markdown-renderer pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.chat-msg-content.markdown-content .markdown-renderer img {
+  max-width: 100%;
+  height: auto;
+}
+
 .chat-msg-streaming {
   color: var(--accent-secondary);
   font-family: 'IBM Plex Mono', monospace;
   font-size: var(--text-sm);
   font-weight: var(--font-medium);
+}
+
+.chat-msg-streaming .markdown-renderer {
+  color: inherit;
 }
 
 .chat-input-area {
