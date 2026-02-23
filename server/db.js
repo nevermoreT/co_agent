@@ -41,7 +41,9 @@ db.exec(`
     description TEXT DEFAULT '',
     status TEXT NOT NULL DEFAULT 'pending',
     created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
+    updated_at TEXT DEFAULT (datetime('now')),
+    last_activity_at TEXT DEFAULT (datetime('now')),
+    group_name TEXT
   );
 
   CREATE TABLE IF NOT EXISTS chat_messages (
@@ -87,8 +89,26 @@ db.exec(`
     FOREIGN KEY (conversation_id) REFERENCES tasks(id)
   );
   CREATE INDEX IF NOT EXISTS idx_events_type ON shared_events(event_type);
+  CREATE INDEX IF NOT EXISTS idx_events_agent ON shared_events(source_agent_id);
   CREATE INDEX IF NOT EXISTS idx_events_conv ON shared_events(conversation_id);
   CREATE INDEX IF NOT EXISTS idx_events_time ON shared_events(created_at);
+  CREATE INDEX IF NOT EXISTS idx_events_importance ON shared_events(importance);
+
+  CREATE TABLE IF NOT EXISTS consensus_knowledge (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    context TEXT,
+    source_events TEXT,
+    verified_by TEXT,
+    confidence INTEGER DEFAULT 80,
+    valid_from TEXT,
+    valid_until TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(key, category)
+  );
 
   CREATE TABLE IF NOT EXISTS agent_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,6 +219,16 @@ wrap.prepare.bind(wrap);
         'INSERT INTO agents (name, cli_command, cli_cwd, builtin_key) VALUES (?, ?, ?, ?)'
       ).run('Opencode CLI', 'builtin:opencode-cli', null, 'opencode-cli');
     }
+  }
+})();
+
+// 创建默认对话"创世碎碎念"
+(function seedDefaultConversation() {
+  const defaultConv = wrap.prepare('SELECT id FROM tasks WHERE title = ?').get('创世碎碎念');
+  if (!defaultConv) {
+    wrap.prepare(
+      'INSERT INTO tasks (title, description, status, group_name) VALUES (?, ?, ?, ?)'
+    ).run('创世碎碎念', '默认对话，记录所有碎碎念', 'doing', '默认');
   }
 })();
 

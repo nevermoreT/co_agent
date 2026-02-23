@@ -16,8 +16,12 @@ export function setupWebSocket(httpServer) {
       }
     };
 
-    ws.on('error', () => {});
-    ws.on('close', () => {});
+    ws.on('error', (err) => {
+      logger.error('[websocket] WebSocket error:', err);
+    });
+    ws.on('close', () => {
+      logger.log('[websocket] Client disconnected');
+    });
 
     ws.on('message', (raw) => {
       let msg;
@@ -27,8 +31,11 @@ export function setupWebSocket(httpServer) {
         send({ type: 'error', message: 'Invalid JSON' });
         return;
       }
-      const { action, agentId, text } = msg;
+      const { action, agentId, text, conversationId } = msg;
       const id = agentId != null ? Number(agentId) : null;
+      const convId = conversationId != null ? Number(conversationId) : null;
+      logger.log('[websocket] message: action=%s agentId=%s conversationId=%s (raw: %s) convId=%s', 
+        action, id, conversationId, JSON.stringify(conversationId), convId);
 
       if (action === 'start') {
         if (id == null || Number.isNaN(id)) {
@@ -62,14 +69,14 @@ export function setupWebSocket(httpServer) {
           send({ type: 'error', message: 'agentId and text required' });
           return;
         }
-        logger.log('[websocket] send: agentId=%s text=%s', id, text.substring(0, 50) + '...');
+        logger.log('[websocket] send: agentId=%s convId=%s', id, convId);
         const agent = db.prepare('SELECT builtin_key FROM agents WHERE id = ?').get(id);
         if (agent && agent.builtin_key === 'claude-cli') {
           logger.log('[websocket] send: agentId=%s is claude-cli, calling runClaudeCli', id);
           try {
             const onOutput = (stream, data) => {
               if (stream === 'stdout' && typeof data === 'string' && data.length > 0) {
-                logger.log('[claude-cli] stdout chunk:', data.length, 'chars');
+                logger.log('[claude-cli] stdout chunk: %d chars', data.length);
               }
               send({ type: 'output', agentId: id, stream, data });
             };
@@ -77,7 +84,7 @@ export function setupWebSocket(httpServer) {
               logger.log('[claude-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
               send({ type: 'exit', agentId: id, code, signal });
             };
-            const ok = agentRunner.runClaudeCli(id, text, onOutput, onExit);
+            const ok = agentRunner.runClaudeCli(id, text, onOutput, onExit, convId);
             if (!ok) {
               logger.log('[websocket] send: runClaudeCli failed for agentId=%s', id);
               send({ type: 'error', agentId: id, message: 'Claude CLI start failed (already running?)' });
@@ -101,7 +108,7 @@ export function setupWebSocket(httpServer) {
               logger.log('[opencode-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
               send({ type: 'exit', agentId: id, code, signal });
             };
-            const ok = agentRunner.runOpencodeCli(id, text, onOutput, onExit);
+            const ok = agentRunner.runOpencodeCli(id, text, onOutput, onExit, convId);
             if (!ok) {
               logger.log('[websocket] send: runOpencodeCli failed for agentId=%s', id);
               send({ type: 'error', agentId: id, message: 'Opencode CLI start failed (already running?)' });

@@ -90,7 +90,10 @@ export function useWs(options = {}) {
   const sendStart = useCallback((agentId) => send({ action: 'start', agentId }), [send]);
   const sendStop = useCallback((agentId) => send({ action: 'stop', agentId }), [send]);
   const sendText = useCallback(
-    (agentId, text) => send({ action: 'send', agentId, text }),
+    (agentId, text, conversationId) => {
+      logger.log('[useWs] sendText: agentId=%s conversationId=%s', agentId, conversationId);
+      send({ action: 'send', agentId, text, conversationId });
+    },
     [send]
   );
 

@@ -11,6 +11,12 @@ import ChatPanel from '../../client/components/ChatPanel';
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+// Mock agents data
+const mockAgents = [
+  { id: 1, name: 'Claude CLI', cli_command: 'builtin:claude-cli' },
+  { id: 2, name: 'Opencode CLI', cli_command: 'builtin:opencode-cli' },
+];
+
 // Mock useGlobalMessages hook
 vi.mock('../../client/hooks/useGlobalMessages', () => ({
   useGlobalMessages: () => ({
@@ -27,15 +33,17 @@ vi.mock('../../client/hooks/useGlobalMessages', () => ({
 
 describe('ChatPanel 组件测试', () => {
   const defaultProps = {
-    agents: [
-      { id: 1, name: 'Claude CLI', builtin_key: 'claude-cli' },
-      { id: 2, name: 'Opencode CLI', builtin_key: 'opencode-cli' },
-    ],
-    selectedTaskId: null,
+    agents: mockAgents,
+    selectedTaskId: 1,
     wsReady: true,
     runningAgentIds: [],
     streamingContent: '',
     streamingAgentId: null,
+    currentConversation: { id: 1, title: 'Test Conversation', group_name: 'Test' },
+    messages: [
+      { id: 1, role: 'user', content: 'Hello', agent_id: null, agent_name: null },
+      { id: 2, role: 'assistant', content: 'Hi there!', agent_id: 1, agent_name: 'Claude CLI' },
+    ],
     onStart: vi.fn(),
     onStop: vi.fn(),
     onSendText: vi.fn(),
@@ -50,8 +58,15 @@ describe('ChatPanel 组件测试', () => {
     it('应该正确渲染聊天面板', () => {
       render(<ChatPanel {...defaultProps} />);
       
-      expect(screen.getByText('统一聊天')).toBeInTheDocument();
+      expect(screen.getByText('Test Conversation')).toBeInTheDocument();
       expect(screen.getByPlaceholderText('输入消息，使用 @AgentName 调用 Agent...')).toBeInTheDocument();
+    });
+
+    it('应该显示空状态当没有选中对话时', () => {
+      render(<ChatPanel {...defaultProps} currentConversation={null} />);
+      
+      expect(screen.getByText('选择一个对话开始聊天')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('请先选择或创建一个对话')).toBeInTheDocument();
     });
 
     it('应该显示历史消息', () => {
@@ -254,7 +269,7 @@ describe('ChatPanel 组件测试', () => {
       
       await waitFor(() => {
         expect(defaultProps.onStart).toHaveBeenCalledWith(1);
-        expect(defaultProps.onSendText).toHaveBeenCalledWith(1, 'Hello');
+        expect(defaultProps.onSendText).toHaveBeenCalledWith(1, 'Hello', 1);
       });
     });
 

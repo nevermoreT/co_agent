@@ -56,20 +56,18 @@ function parseNdjsonLine(line, onOutput, onSession) {
   if (!raw) return;
   try {
     const obj = JSON.parse(raw);
-    
-    // 检测 system 消息中的 session_id
+
+    // 打印完整的原始 JSON 用于调试
+    console.log('[minimal-claude] RAW JSON:', JSON.stringify(obj));
+
     if (obj.type === 'system' && obj.session_id) {
-      console.log('[minimal-claude] detected session_id:', obj.session_id);
       onSession && onSession(obj.session_id);
     }
-    
-    // 检测 result 消息中的 session_id
+
     if (obj.type === 'result' && obj.session_id) {
-      console.log('[minimal-claude] detected session_id in result:', obj.session_id);
       onSession && onSession(obj.session_id);
     }
-    
-    // 解析 assistant 消息
+
     if (obj.type === 'assistant' && obj.message?.content) {
       for (const block of obj.message.content) {
         if (block.type === 'text' && block.text) {
@@ -77,16 +75,93 @@ function parseNdjsonLine(line, onOutput, onSession) {
         }
       }
     }
-  } catch {
-    // ignore JSON parse errors for incomplete/invalid lines
+  } catch (e) {
+    console.error('[minimal-claude] JSON parse failed:', e.message, 'line length:', raw.length);
   }
 }
 
-function processPtyData(data, stdoutBuf, onOutput, onSession) {
+function extractJsonObjects(text) {
+  const objects = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+  
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    
+    if (c === '\x1b') {
+      let j = i + 1;
+      if (j < text.length && text[j] === '[') {
+        j++;
+        while (j < text.length && /[0-9;]/.test(text[j])) j++;
+        if (j < text.length && /[A-Za-z]/.test(text[j])) j++;
+        i = j - 1;
+        continue;
+      } else if (j < text.length && text[j] === ']') {
+        const endBell = text.indexOf('\x07', j);
+        const endEsc = text.indexOf('\x1b\\', j);
+        if (endBell !== -1 && (endEsc === -1 || endBell < endEsc)) {
+          i = endBell;
+        } else if (endEsc !== -1) {
+          i = endEsc + 1;
+        } else {
+          i = j;
+        }
+        continue;
+      }
+    }
+    
+    if (c === '\r') continue;
+    
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    
+    if (c === '\\' && inString) {
+      escape = true;
+      continue;
+    }
+    
+    if (c === '"') {
+      inString = !inString;
+      continue;
+    }
+    
+    if (inString) continue;
+    
+    if (c === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        objects.push({ text: text.substring(start, i + 1), start });
+        start = -1;
+      }
+    }
+  }
+  
+  const lastObj = objects[objects.length - 1];
+  const consumed = lastObj ? lastObj.start + lastObj.text.length : 0;
+  const remaining = text.substring(consumed);
+  
+  return { objects: objects.map(o => o.text), remaining };
+}
+
+function processPtyData(data, stdoutBuf, onOutput, onSession, chunkNum) {
   const s = stdoutBuf.current + data;
-  const lines = s.split(/\r?\n/);
-  stdoutBuf.current = lines.pop() ?? '';
-  for (const line of lines) parseNdjsonLine(line, onOutput, onSession);
+  const { objects, remaining } = extractJsonObjects(s);
+  
+  for (const obj of objects) {
+    parseNdjsonLine(obj, onOutput, onSession);
+  }
+  
+  stdoutBuf.current = remaining;
+  console.log('[minimal-claude] chunk %d: %d chars, %d JSON objects, buffer %d chars', 
+    chunkNum.val, data.length, objects.length, remaining.length);
+  chunkNum.val++;
 }
 
 /**
@@ -156,60 +231,62 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
  */
 export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: shouldContinue = true, sessionId, cwd } = {}) {
   const isWin = process.platform === 'win32';
-  
-  // 构建会话参数
+
   const sessionConfig = buildSessionArgs({ continue: shouldContinue, sessionId });
-  
-  // 构建命令参数
-  const baseArgs = [
-    '-p', prompt || '',
+
+  const escapeForShell = (arg) => {
+    if (!arg) return '""';
+    const escaped = arg.replace(/\n/g, ' ').replace(/\r/g, '');
+    if (escaped.includes(' ') || escaped.includes('"') || escaped.includes("'") || escaped.includes('&') || escaped.includes('|')) {
+      return '"' + escaped.replace(/"/g, '""') + '"';
+    }
+    return escaped;
+  };
+
+  const args = [
     ...sessionConfig.args,
     '--output-format', 'stream-json',
     '--verbose',
     '--permission-mode', 'acceptEdits'
   ];
-  const cmdStr = `claude ${baseArgs.join(' ')}`;
 
-  // 工作目录：优先使用传入的 cwd，否则使用当前目录
   const workDir = cwd || process.cwd();
 
-  if (ptySpawn) {
-    // 使用伪终端，子进程认为在写 TTY，通常不会全缓冲，可避免"卡住"
-    const file = isWin ? (process.env.COMSPEC || 'cmd.exe') : 'claude';
-    const args = isWin ? ['/c', cmdStr] : baseArgs;
-    const ptyProcess = ptySpawn(file, args, {
-      name: 'xterm-256color',
-      cols: 8192, // 足够宽，避免 PTY 在行内插入 \r\n 把一条 NDJSON 拆成多行导致解析失败
-      rows: 24,
-      cwd: workDir,
-      env: process.env,
-    });
-    const stdoutBuf = { current: '' };
-    ptyProcess.on('data', (data) => {
-      processPtyData(data, stdoutBuf, onOutput, onSession);
-    });
-    ptyProcess.on('exit', (code, signal) => {
-      if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, onSession);
-      onExit && onExit(code ?? -1, signal);
-    });
-    console.log('[minimal-claude] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
-    return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
-  }
+  // 打印完整 prompt 用于调试
+  console.log('[minimal-claude] FULL PROMPT (%d chars):', prompt?.length || 0);
+  console.log(prompt);
 
-  // 回退：普通 spawn（stdout 可能被缓冲）
-  const child = isWin
-    ? spawn(cmdStr, [], { stdio: ['inherit', 'pipe', 'pipe'], shell: true, cwd: workDir })
-    : spawn('claude', baseArgs, { stdio: ['inherit', 'pipe', 'pipe'], cwd: workDir });
+  // Windows 上需要 shell: true 来调用 .cmd 文件，但需要正确转义参数
+  const escapedPrompt = (prompt || '').replace(/"/g, '""');
+  const cmdArgs = [...args, '-p', escapedPrompt];
+  const cmdStr = `claude ${cmdArgs.map(a => `"${a}"`).join(' ')}`;
+  console.log('[minimal-claude] spawn command (truncated for display):', cmdStr.substring(0, 300) + '...');
+  console.log('[minimal-claude] Working directory:', workDir);
+
+  const child = spawn(cmdStr, [], {
+    stdio: ['inherit', 'pipe', 'pipe'],
+    cwd: workDir,
+    shell: true,
+  });
 
   let stdoutBuf = '';
+  let chunkNum = 0;
   child.stdout.on('data', (chunk) => {
-    const s = stdoutBuf + chunk.toString();
-    const lines = s.split(/\r?\n/);
-    stdoutBuf = lines.pop() ?? '';
-    for (const line of lines) parseNdjsonLine(line, onOutput, onSession);
+    const data = chunk.toString();
+    const s = stdoutBuf + data;
+    const { objects, remaining } = extractJsonObjects(s);
+    console.log('[minimal-claude] chunk %d: %d chars, %d JSON objects, buffer %d chars',
+      chunkNum++, data.length, objects.length, remaining.length);
+    for (const obj of objects) {
+      parseNdjsonLine(obj, onOutput, onSession);
+    }
+    stdoutBuf = remaining;
   });
   child.stdout.on('end', () => {
-    if (stdoutBuf) parseNdjsonLine(stdoutBuf, onOutput, onSession);
+    if (stdoutBuf.trim()) {
+      const { objects } = extractJsonObjects(stdoutBuf);
+      for (const obj of objects) parseNdjsonLine(obj, onOutput, onSession);
+    }
   });
   child.stderr.on('data', (chunk) => onOutput('stderr', chunk.toString()));
   child.on('error', (err) => {
@@ -223,7 +300,7 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
   child.on('exit', (code, signal) => {
     onExit && onExit(code ?? -1, signal);
   });
-  console.log('[minimal-claude] spawn (no PTY) pid:', child.pid, sessionConfig.logInfo);
+  console.log('[minimal-claude] spawn pid:', child.pid, sessionConfig.logInfo);
   return { child };
 }
 

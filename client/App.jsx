@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import TaskPanel from './components/TaskPanel';
 import ChatPanel from './components/ChatPanel';
 import RightPanel from './components/RightPanel';
@@ -9,15 +9,35 @@ import logger from './utils/logger';
 import './App.css';
 
 const API = '/api';
+const DEFAULT_CONVERSATION_TITLE = '创世碎碎念';
 
 export default function App() {
-  const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [streaming, setStreaming] = useState({});
   const [streamingAgentId, setStreamingAgentId] = useState(null);
   const streamingRef = useRef({});
 
   const { agents, refetch: refetchAgents } = useAgents();
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTasks();
+
+  // 默认选中"创世碎碎念"对话
+  useEffect(() => {
+    logger.log('[App] useEffect: tasksLoading=%s tasks.length=%d selectedConversationId=%s', 
+      tasksLoading, tasks.length, selectedConversationId);
+    if (!tasksLoading && tasks.length > 0 && !selectedConversationId) {
+      const defaultConv = tasks.find(t => t.title === DEFAULT_CONVERSATION_TITLE);
+      if (defaultConv) {
+        logger.log('[App] setting default conversation: %d', defaultConv.id);
+        setSelectedConversationId(defaultConv.id);
+      } else if (tasks.length > 0) {
+        logger.log('[App] setting first conversation: %d', tasks[0].id);
+        setSelectedConversationId(tasks[0].id);
+      }
+    }
+  }, [tasks, tasksLoading, selectedConversationId]);
+
+  // Get current conversation object
+  const currentConversation = tasks.find(t => t.id === selectedConversationId);
   const { ready, runningAgentIds, lastError, clearError, sendStart, sendStop, sendText } = useWs({
     onOutput(agentId, stream, data) {
       logger.log('[App] onOutput: agentId=%s stream=%s data.length=%d', agentId, stream, data?.length || 0);
@@ -29,7 +49,7 @@ export default function App() {
       setStreamingAgentId(agentId);
     },
     onExit(agentId) {
-      logger.log('[App] onExit: agentId=%s', agentId);
+      logger.log('[App] onExit: agentId=%s selectedConversationId=%s', agentId, selectedConversationId);
       const content = streamingRef.current[agentId] || '';
       logger.log('[App] onExit: saving assistant message, content.length=%d', content.length);
 
@@ -45,6 +65,7 @@ export default function App() {
             content,
             agent_id: agentId,
             agent_name: agentName,
+            task_id: selectedConversationId,
           }),
         }).catch((err) => {
           logger.error('[App] failed to save assistant message:', err);
@@ -64,6 +85,11 @@ export default function App() {
     },
   });
 
+  const handleSendText = useCallback((agentId, text, conversationId) => {
+    logger.log('[App] handleSendText: agentId=%s text.length=%d conversationId=%s', agentId, text.length, conversationId);
+    sendText(agentId, text, conversationId);
+  }, [sendText]);
+
   const getStreamingContent = () => {
     if (streamingAgentId && streaming[streamingAgentId]) {
       return streaming[streamingAgentId];
@@ -78,8 +104,8 @@ export default function App() {
           tasks={tasks}
           loading={tasksLoading}
           refetch={refetchTasks}
-          selectedTaskId={selectedTaskId}
-          onSelectTask={setSelectedTaskId}
+          selectedTaskId={selectedConversationId}
+          onSelectTask={setSelectedConversationId}
         />
       </aside>
       <main className="panel panel-center">
@@ -91,14 +117,15 @@ export default function App() {
         )}
         <ChatPanel
           agents={agents}
-          selectedTaskId={selectedTaskId}
+          selectedTaskId={selectedConversationId}
           wsReady={ready}
           runningAgentIds={runningAgentIds}
           streamingContent={getStreamingContent()}
           streamingAgentId={streamingAgentId}
           onStart={sendStart}
           onStop={sendStop}
-          onSendText={sendText}
+          onSendText={handleSendText}
+          currentConversation={currentConversation}
         />
       </main>
       <aside className="panel panel-right">
@@ -107,7 +134,7 @@ export default function App() {
           runningAgentIds={runningAgentIds}
           wsReady={ready}
           refetchAgents={refetchAgents}
-          selectedTaskId={selectedTaskId}
+          selectedTaskId={selectedConversationId}
         />
       </aside>
     </div>

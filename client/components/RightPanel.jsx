@@ -6,7 +6,9 @@ const MAX_AGENTS = 5;
 
 function formatSessionTime(isoString) {
   if (!isoString) return '';
-  const date = new Date(isoString);
+  // 兼容 "YYYY-MM-DD HH:MM:SS" 和 ISO 8601 格式
+  const normalized = isoString.includes('T') ? isoString : isoString.replace(' ', 'T');
+  const date = new Date(normalized);
   const now = new Date();
   const diff = now - date;
   const minutes = Math.floor(diff / 60000);

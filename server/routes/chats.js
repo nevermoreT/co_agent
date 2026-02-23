@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import db from '../db.js';
+import * as memoryManager from '../services/memoryManager.js';
 
 const router = Router();
 
@@ -43,11 +44,20 @@ router.get('/messages', (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
     const offset = parseInt(req.query.offset, 10) || 0;
-    const list = db
-      .prepare(
-        'SELECT * FROM global_messages ORDER BY created_at ASC LIMIT ? OFFSET ?'
-      )
-      .all(limit, offset);
+    const conversationId = req.query.conversation_id || req.query.task_id;
+    
+    let query = 'SELECT * FROM global_messages';
+    let params = [];
+    
+    if (conversationId) {
+      query += ' WHERE task_id = ?';
+      params.push(conversationId);
+    }
+    
+    query += ' ORDER BY created_at ASC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+    
+    const list = db.prepare(query).all(...params);
     res.json(list);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -64,7 +74,28 @@ router.post('/messages', (req, res) => {
       'INSERT INTO global_messages (role, content, agent_id, agent_name, task_id) VALUES (?, ?, ?, ?, ?)'
     );
     const info = run.run(role, content || '', agent_id || null, agent_name || null, task_id || null);
+
+    if (task_id) {
+      db.prepare('UPDATE tasks SET last_activity_at = datetime(\'now\') WHERE id = ?').run(task_id);
+    }
+
     const row = db.prepare('SELECT * FROM global_messages WHERE id = ?').get(info.lastInsertRowid);
+
+    if (content && content.trim() && role === 'user') {
+      let title = content.replace(/^@[A-Za-z\s]+(?=\s\S)/, '').trim();
+      title = title.substring(0, 50) + (title.length > 50 ? '...' : '');
+      
+      if (title) {
+        memoryManager.recordEvent({
+          eventType: 'conversation',
+          conversationId: task_id,
+          title,
+          content,
+          importance: 6,
+        });
+      }
+    }
+
     res.status(201).json(row);
   } catch (e) {
     res.status(500).json({ error: e.message });

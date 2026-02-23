@@ -2,14 +2,17 @@ import { useState, useEffect, useCallback } from 'react';
 
 const API = '/api';
 
-export function useGlobalMessages() {
+export function useGlobalMessages(conversationId = null) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const refetch = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/messages?limit=200`);
+      const url = conversationId 
+        ? `${API}/messages?conversation_id=${conversationId}&limit=200`
+        : `${API}/messages?limit=200`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error(res.statusText);
       const data = await res.json();
       setMessages(Array.isArray(data) ? data : []);
@@ -18,7 +21,7 @@ export function useGlobalMessages() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [conversationId]);
 
   useEffect(() => {
     refetch();
