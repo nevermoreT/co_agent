@@ -259,6 +259,67 @@
   gap: 8px;
 }
 
+.right-modal-large {
+  min-width: 480px;
+  max-width: 95vw;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.form-section {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.form-section:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.form-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-section h4::before {
+  content: '';
+  width: 3px;
+  height: 12px;
+  background: var(--accent-primary);
+  border-radius: 2px;
+}
+
+.right-modal-content textarea {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 60px;
+  transition: all var(--transition-fast);
+}
+
+.right-modal-content textarea:hover {
+  border-color: var(--text-light);
+}
+
+.right-modal-content textarea:focus {
+  border-color: var(--accent-secondary);
+  background: var(--bg-secondary);
+  box-shadow: 0 0 0 2px var(--accent-secondary-light);
+  outline: none;
+}
+
 .right-history {
   flex: 1;
   overflow-y: auto;

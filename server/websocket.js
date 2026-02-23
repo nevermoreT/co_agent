@@ -73,26 +73,28 @@ export function setupWebSocket(httpServer) {
         const agent = db.prepare('SELECT builtin_key FROM agents WHERE id = ?').get(id);
         if (agent && agent.builtin_key === 'claude-cli') {
           logger.log('[websocket] send: agentId=%s is claude-cli, calling runClaudeCli', id);
-          try {
-            const onOutput = (stream, data) => {
-              if (stream === 'stdout' && typeof data === 'string' && data.length > 0) {
-                logger.log('[claude-cli] stdout chunk: %d chars', data.length);
+          (async () => {
+            try {
+              const onOutput = (stream, data) => {
+                if (stream === 'stdout' && typeof data === 'string' && data.length > 0) {
+                  logger.log('[claude-cli] stdout chunk: %d chars', data.length);
+                }
+                send({ type: 'output', agentId: id, stream, data });
+              };
+              const onExit = (code, signal) => {
+                logger.log('[claude-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
+                send({ type: 'exit', agentId: id, code, signal });
+              };
+              const ok = await agentRunner.runClaudeCli(id, text, onOutput, onExit, convId);
+              if (!ok) {
+                logger.log('[websocket] send: runClaudeCli failed for agentId=%s', id);
+                send({ type: 'error', agentId: id, message: 'Claude CLI start failed (already running?)' });
               }
-              send({ type: 'output', agentId: id, stream, data });
-            };
-            const onExit = (code, signal) => {
-              logger.log('[claude-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
-              send({ type: 'exit', agentId: id, code, signal });
-            };
-            const ok = agentRunner.runClaudeCli(id, text, onOutput, onExit, convId);
-            if (!ok) {
-              logger.log('[websocket] send: runClaudeCli failed for agentId=%s', id);
-              send({ type: 'error', agentId: id, message: 'Claude CLI start failed (already running?)' });
+            } catch (err) {
+              logger.error('[websocket] runClaudeCli error:', err);
+              send({ type: 'error', agentId: id, message: String(err?.message || err) });
             }
-          } catch (err) {
-            logger.error('[websocket] runClaudeCli error:', err);
-            send({ type: 'error', agentId: id, message: String(err?.message || err) });
-          }
+          })();
           return;
         }
         if (agent && agent.builtin_key === 'opencode-cli') {

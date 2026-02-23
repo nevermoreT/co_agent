@@ -207,12 +207,15 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
  * @param {boolean} [options.continue=true] - 是否继续上一个会话（保持上下文）
  * @param {string} [options.sessionId] - 指定会话 ID（优先于 continue）
  * @param {string} [options.cwd] - 工作目录（确保会话在同一项目下）
+ * @param {string} [options.systemPrompt] - System prompt 内容（用于 --append-system-prompt）
+ * @param {string} [options.systemPromptFile] - System prompt 文件路径（用于 --append-system-prompt-file）
  * 
  * 会话管理说明：
  * 1. sessionId 优先：如果提供了 sessionId，使用 --resume <id> 恢复具体会话
  * 2. continue 次之：如果没有 sessionId 但 continue=true，使用 --continue 继续最近的会话
  * 3. Claude CLI 会在 ~/.claude/ 下存储会话数据
  * 4. onSession 回调会在检测到 session ID 时触发，可用于保存 session ID
+ * 5. systemPromptFile 优先于 systemPrompt
  * 
  * 使用示例：
  * ```javascript
@@ -227,9 +230,15 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
  * 
  * // 开启全新会话
  * runClaudeCli('hello', { continue: false });
+ * 
+ * // 使用 system prompt
+ * runClaudeCli('hello', { systemPrompt: '你是一个专业的架构师' });
+ * 
+ * // 使用 system prompt 文件
+ * runClaudeCli('hello', { systemPromptFile: '/tmp/system.txt' });
  * ```
  */
-export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: shouldContinue = true, sessionId, cwd } = {}) {
+export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: shouldContinue = true, sessionId, cwd, systemPrompt, systemPromptFile } = {}) {
   const isWin = process.platform === 'win32';
 
   const sessionConfig = buildSessionArgs({ continue: shouldContinue, sessionId });
@@ -249,6 +258,17 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
     '--verbose',
     '--permission-mode', 'acceptEdits'
   ];
+  
+  // Phase 3.1: 添加 system prompt 支持
+  if (systemPromptFile) {
+    args.push('--append-system-prompt-file', systemPromptFile);
+    console.log('[minimal-claude] using system prompt file:', systemPromptFile);
+  } else if (systemPrompt) {
+    // 对 system prompt 进行安全化处理
+    const sanitizedSystemPrompt = systemPrompt.replace(/"/g, '\\"').replace(/\n/g, ' ');
+    args.push('--append-system-prompt', sanitizedSystemPrompt);
+    console.log('[minimal-claude] using system prompt (%d chars)', systemPrompt.length);
+  }
 
   const workDir = cwd || process.cwd();
 
