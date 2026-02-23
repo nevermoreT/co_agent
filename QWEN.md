@@ -42,13 +42,14 @@ co_agent/
 │   │   ├── TaskPanel.jsx        # 任务/对话管理面板
 │   │   ├── ChatPanel.jsx        # 统一聊天面板（支持 @mention）
 │   │   ├── RightPanel.jsx       # Agent 管理与状态面板
+│   │   ├── MarkdownRenderer.jsx # Markdown 渲染组件（新增）
 │   │   └── ErrorBoundary.jsx    # 错误边界
 │   ├── hooks/
 │   │   ├── useAgents.js         # Agent 数据获取
 │   │   ├── useTasks.js          # 任务数据获取
 │   │   ├── useWs.js             # WebSocket 连接管理
 │   │   ├── useGlobalMessages.js # 全局消息获取（按对话过滤）
-│   │   └── useMessages.js       # 遗留：单 Agent 消息获取
+│   │   └── useMessages.js       # 遡留：单 Agent 消息获取
 │   ├── utils/
 │   │   └── logger.js            # 时间戳日志工具
 │   ├── App.jsx                  # 主应用组件（三栏布局）
@@ -76,8 +77,12 @@ co_agent/
 │   ├── hooks/                   # Hook 测试
 │   ├── mocks/                   # Mock 模块
 │   ├── unit/                    # 单元测试
+│   │   └── markdown-renderer.test.jsx # Markdown 渲染器测试
 │   └── setup.js                 # 测试配置
 ├── doc/                         # 设计文档与 Bugfix 记录
+├── docs/                        # 新功能文档
+│   ├── markdown-thinking-support.md # Markdown 渲染与 Thinking 消息文档
+│   └── opencode-session-chain.md    # Opencode CLI 会话链文档
 ├── data/                        # SQLite 数据库（自动创建）
 │   └── app.db
 ├── minimal-claude.js            # Claude CLI 封装（NDJSON 解析）
@@ -181,6 +186,8 @@ CREATE TABLE global_messages (
   agent_id INTEGER,
   agent_name TEXT,
   task_id INTEGER,              -- 对话 ID
+  message_type TEXT DEFAULT 'text',  -- text, thinking, image
+  metadata TEXT,                -- JSON 格式存储附加信息
   created_at TEXT
 );
 ```
@@ -229,7 +236,7 @@ CREATE TABLE agent_sessions (
 | DELETE | `/api/tasks/:id` | 删除任务 |
 | GET | `/api/messages?conversation_id=X` | 获取对话消息 |
 | POST | `/api/messages` | 发送消息 |
-| GET | `/api/agents/:id/messages` | 获取单 Agent 消息（遗留） |
+| GET | `/api/agents/:id/messages` | 获取单 Agent 消息（遗贸） |
 | GET | `/api/sessions` | 获取会话列表 |
 | POST | `/api/sessions` | 创建/更新会话 |
 | GET | `/api/memory` | 获取记忆事件 |
@@ -246,7 +253,7 @@ CREATE TABLE agent_sessions (
 |------|------|------|
 | `start` | `{ agentId }` | 启动 Agent 进程 |
 | `send` | `{ agentId, text, conversationId }` | 发送文本到 Agent |
-| `stop` | `{ agentId }` | 停止 Agent 进程 |
+| `stop` | `{ agentId }` | 偲止 Agent 进程 |
 | `status` | - | 请求状态 |
 
 ### 服务端响应
@@ -353,6 +360,12 @@ import db from '../db.js';
 - 存储在 `agent_sessions` 表
 - 支持对话上下文连续性
 
+### Markdown 渲染与 Thinking 消息
+- **Markdown 支持**: 代码块、列表、表格、任务列表、引用等
+- **Thinking 消息**: 折叠面板显示思考过程，不计入上下文
+- **多模态支持**: 图片消息通过 metadata.url 传递
+- **消息类型字段**: `message_type` (text/thinking/image)、`metadata` (JSON)
+
 ## 约束条件
 
 - 最多 5 个 Agent
@@ -388,3 +401,5 @@ gh pr create --title "标题" --body "描述"
 - `AGENTS.md` - Agent 编码指南
 - `RULES.md` - 项目规则
 - `doc/` - 设计文档与 Bugfix 记录
+- `docs/markdown-thinking-support.md` - Markdown 渲染与 Thinking 消息文档
+- `docs/opencode-session-chain.md` - Opencode CLI 会话链文档
