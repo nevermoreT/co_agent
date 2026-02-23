@@ -66,14 +66,26 @@ router.get('/messages', (req, res) => {
 
 router.post('/messages', (req, res) => {
   try {
-    const { role, content, agent_id, agent_name, task_id } = req.body;
+    const { role, content, agent_id, agent_name, task_id, message_type, metadata } = req.body;
     if (!role || content === undefined) {
       return res.status(400).json({ error: 'role 和 content 必填' });
     }
+    
+    // 默认消息类型为 text
+    const type = message_type || 'text';
+    
     const run = db.prepare(
-      'INSERT INTO global_messages (role, content, agent_id, agent_name, task_id) VALUES (?, ?, ?, ?, ?)'
+      'INSERT INTO global_messages (role, content, agent_id, agent_name, task_id, message_type, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
-    const info = run.run(role, content || '', agent_id || null, agent_name || null, task_id || null);
+    const info = run.run(
+      role,
+      content || '',
+      agent_id || null,
+      agent_name || null,
+      task_id || null,
+      type,
+      metadata ? JSON.stringify(metadata) : null
+    );
 
     if (task_id) {
       db.prepare('UPDATE tasks SET last_activity_at = datetime(\'now\') WHERE id = ?').run(task_id);
@@ -81,10 +93,11 @@ router.post('/messages', (req, res) => {
 
     const row = db.prepare('SELECT * FROM global_messages WHERE id = ?').get(info.lastInsertRowid);
 
-    if (content && content.trim() && role === 'user') {
+    // 只为普通用户消息记录事件（thinking 消息不记录）
+    if (content && content.trim() && role === 'user' && type !== 'thinking') {
       let title = content.replace(/^@[A-Za-z\s]+(?=\s\S)/, '').trim();
       title = title.substring(0, 50) + (title.length > 50 ? '...' : '');
-      
+
       if (title) {
         memoryManager.recordEvent({
           eventType: 'conversation',

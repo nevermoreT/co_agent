@@ -67,11 +67,14 @@ db.exec(`
     agent_id INTEGER,
     agent_name TEXT,
     task_id INTEGER,
+    message_type TEXT DEFAULT 'text',  -- text, thinking, image
+    metadata TEXT,  -- JSON string for image url, etc.
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (agent_id) REFERENCES agents(id),
     FOREIGN KEY (task_id) REFERENCES tasks(id)
   );
   CREATE INDEX IF NOT EXISTS idx_global_created ON global_messages(created_at);
+  CREATE INDEX IF NOT EXISTS idx_global_type ON global_messages(message_type);
 
   CREATE TABLE IF NOT EXISTS shared_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,6 +158,21 @@ try {
 
 try {
   db.run('ALTER TABLE tasks ADD COLUMN is_archived INTEGER DEFAULT 0');
+  save();
+} catch {
+  // column already exists
+}
+
+// 添加消息类型字段（用于 thinking、image 等）
+try {
+  db.run("ALTER TABLE global_messages ADD COLUMN message_type TEXT DEFAULT 'text'");
+  save();
+} catch {
+  // column already exists
+}
+
+try {
+  db.run('ALTER TABLE global_messages ADD COLUMN metadata TEXT');
   save();
 } catch {
   // column already exists

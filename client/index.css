@@ -1,48 +1,81 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --bg-primary: #f8f7f4;
+  /* 主色调 - 基于参考图的温暖中性色系 */
+  --bg-primary: #faf9f7;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #f1f0ed;
-  --bg-hover: #e9e8e5;
-  
-  --text-primary: #1c1b19;
-  --text-secondary: #575653;
-  --text-muted: #8a8986;
-  --text-light: #c4c3c0;
-  
-  --border-color: #e4e3e0;
-  --border-light: #eeece9;
-  
-  --accent-primary: #e85d4c;
-  --accent-primary-light: #ffeee9;
-  --accent-secondary: #3d9a8b;
-  --accent-secondary-light: #e6f5f2;
-  --accent-tertiary: #5c7cfa;
-  --accent-tertiary-light: #eef2ff;
-  --accent-warn: #f59f00;
-  --accent-warn-light: #fff3e0;
-  
-  --user-bubble: #3d9a8b;
+  --bg-tertiary: #f5f4f2;
+  --bg-hover: #edece9;
+  --bg-elevated: #ffffff;
+
+  /* 文字颜色 - 更柔和的对比度 */
+  --text-primary: #2d2b29;
+  --text-secondary: #6b6966;
+  --text-muted: #9a9895;
+  --text-light: #c9c8c6;
+  --text-inverse: #ffffff;
+
+  /* 边框颜色 */
+  --border-color: #e8e6e3;
+  --border-light: #f2f1ef;
+  --border-focus: #d4d2cf;
+
+  /* 强调色 - 更现代柔和的配色 */
+  --accent-primary: #d96c5a;
+  --accent-primary-hover: #c55a4a;
+  --accent-primary-light: #fdf0ee;
+  --accent-secondary: #4db6a3;
+  --accent-secondary-hover: #3fa592;
+  --accent-secondary-light: #e8f6f3;
+  --accent-tertiary: #6d83f5;
+  --accent-tertiary-light: #f0f2ff;
+  --accent-warn: #f0a500;
+  --accent-warn-light: #fff8e6;
+  --accent-success: #22c55e;
+  --accent-success-light: #e8f9ee;
+
+  /* 消息气泡 - 参考图的柔和配色 */
+  --user-bubble: linear-gradient(135deg, #4db6a3 0%, #3fa592 100%);
   --user-bubble-text: #ffffff;
   --agent-bubble: #ffffff;
-  --agent-bubble-text: #1c1b19;
-  
-  --shadow-xs: 0 1px 2px rgba(28, 27, 25, 0.04);
-  --shadow-sm: 0 2px 4px rgba(28, 27, 25, 0.06);
-  --shadow-md: 0 4px 12px rgba(28, 27, 25, 0.08);
-  --shadow-lg: 0 8px 24px rgba(28, 27, 25, 0.1);
-  
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --agent-bubble-text: #2d2b29;
+  --agent-bubble-border: #e8e6e3;
+
+  /* 阴影 - 更细腻的层次感 */
+  --shadow-xs: 0 1px 2px rgba(45, 43, 41, 0.04);
+  --shadow-sm: 0 2px 4px rgba(45, 43, 41, 0.06);
+  --shadow-md: 0 4px 12px rgba(45, 43, 41, 0.08);
+  --shadow-lg: 0 8px 24px rgba(45, 43, 41, 0.1);
+  --shadow-xl: 0 16px 48px rgba(45, 43, 41, 0.12);
+  --shadow-glow: 0 0 20px rgba(77, 182, 163, 0.3);
+
+  /* 圆角 - 更圆润现代的设计 */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
   --radius-full: 9999px;
-  
-  --transition-fast: 0.12s ease;
-  --transition-normal: 0.2s ease;
-  --transition-slow: 0.3s ease;
+
+  /* 过渡动画 */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+  --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 字体大小 */
+  --text-xs: 0.6875rem;    /* 11px */
+  --text-sm: 0.75rem;      /* 12px */
+  --text-base: 0.875rem;   /* 14px */
+  --text-lg: 1rem;         /* 16px */
+  --text-xl: 1.125rem;     /* 18px */
+  --text-2xl: 1.25rem;     /* 20px */
+
+  /* 字重 */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
 }
 
 * {
@@ -58,7 +91,9 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-weight: 400;
+  font-weight: var(--font-normal);
+  font-size: var(--text-base);
+  line-height: 1.6;
 }
 
 #root {
@@ -67,12 +102,13 @@ body {
 
 ::selection {
   background: var(--accent-primary);
-  color: white;
+  color: var(--text-inverse);
 }
 
+/* 自定义滚动条 - 更精致的设计 */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -80,64 +116,79 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--text-light);
+  background: linear-gradient(180deg, var(--border-color), var(--text-light));
   border-radius: var(--radius-full);
-  border: 2px solid transparent;
+  border: 1px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-  border: 2px solid transparent;
-  background-clip: padding-box;
+  background: linear-gradient(180deg, var(--text-muted), var(--text-secondary));
 }
 
+/* 按钮样式优化 */
 .btn {
-  padding: 8px 14px;
+  padding: 8px 16px;
   border: 1px solid var(--border-color);
   background: var(--bg-secondary);
   color: var(--text-primary);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 0.8125rem;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
   font-family: inherit;
   transition: all var(--transition-fast);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.1), transparent);
+  pointer-events: none;
 }
 
 .btn:hover {
   background: var(--bg-hover);
-  border-color: var(--text-light);
+  border-color: var(--border-focus);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn:active {
-  transform: scale(0.98);
+  transform: translateY(0);
+  box-shadow: var(--shadow-xs);
 }
 
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
 }
 
 .btn-sm {
-  padding: 5px 10px;
-  font-size: 0.75rem;
-  border-radius: var(--radius-xs);
+  padding: 5px 12px;
+  font-size: var(--text-xs);
+  border-radius: var(--radius-sm);
 }
 
 .btn-primary {
-  background: var(--accent-primary);
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
   border-color: var(--accent-primary);
-  color: white;
+  color: var(--text-inverse);
+  box-shadow: var(--shadow-xs);
 }
 
 .btn-primary:hover {
-  background: #d14d3c;
-  border-color: #d14d3c;
+  background: linear-gradient(135deg, var(--accent-primary-hover) 0%, var(--accent-primary) 100%);
+  border-color: var(--accent-primary-hover);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-danger {
@@ -149,7 +200,7 @@ body {
 .btn-danger:hover {
   background: var(--accent-primary);
   border-color: var(--accent-primary);
-  color: white;
+  color: var(--text-inverse);
 }
 
 @keyframes fadeIn {

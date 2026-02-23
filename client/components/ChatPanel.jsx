@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useGlobalMessages } from '../hooks/useGlobalMessages';
+import { MarkdownRenderer, ThinkingMessage } from './MarkdownRenderer';
 import logger from '../utils/logger';
 import './ChatPanel.css';
 
@@ -248,18 +249,36 @@ export default function ChatPanel({
             <div className="chat-empty-desc">从左侧对话列表中选择一个对话，或创建新对话</div>
           </div>
         )}
-        {currentConversation && (messages || []).filter(Boolean).map((m) => (
-          <div key={m.id} className={`chat-msg chat-msg-${m.role || 'assistant'}`}>
-            <span className="chat-msg-role">
-              {m.role === 'user' ? '用户' : `@${m.agent_name || 'Agent'}`}
-            </span>
-            <pre className="chat-msg-content">{m.content ?? ''}</pre>
-          </div>
-        ))}
+        {currentConversation && (messages || []).filter(Boolean).map((m) => {
+          // Thinking 消息单独渲染为折叠面板
+          if (m.message_type === 'thinking') {
+            return (
+              <ThinkingMessage
+                key={m.id}
+                content={m.content}
+                agentName={m.agent_name || 'Agent'}
+              />
+            );
+          }
+
+          // 普通消息使用 Markdown 渲染
+          return (
+            <div key={m.id} className={`chat-msg chat-msg-${m.role || 'assistant'}`}>
+              <span className="chat-msg-role">
+                {m.role === 'user' ? '用户' : `@${m.agent_name || 'Agent'}`}
+              </span>
+              <div className="chat-msg-content markdown-content">
+                <MarkdownRenderer content={m.content ?? ''} />
+              </div>
+            </div>
+          );
+        })}
         {currentConversation && streamingContent && streamingAgent && (
           <div className="chat-msg chat-msg-assistant">
             <span className="chat-msg-role">@{streamingAgent.name}</span>
-            <pre className="chat-msg-content chat-msg-streaming">{streamingContent}</pre>
+            <div className="chat-msg-content chat-msg-streaming">
+              <MarkdownRenderer content={streamingContent} />
+            </div>
           </div>
         )}
         {currentConversation && <div ref={messagesEndRef} />}
