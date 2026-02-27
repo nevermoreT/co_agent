@@ -29,6 +29,19 @@ router.get('/', (req, res) => {
   }
 });
 
+// ============ Soul API (Phase 3.2) ============
+// 注意：/soul-templates 必须在 /:id 之前定义
+
+// 获取所有 Soul 模板
+router.get('/soul-templates', (req, res) => {
+  try {
+    const templates = soulManager.getAvailableTemplates();
+    res.json(templates);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.get('/:id', (req, res) => {
   try {
     const row = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
@@ -122,18 +135,6 @@ router.delete('/:id', (req, res) => {
     const info = db.prepare('DELETE FROM agents WHERE id = ?').run(req.params.id);
     if (info.changes === 0) return res.status(404).json({ error: 'Agent not found' });
     res.status(204).send();
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ============ Soul API (Phase 3.2) ============
-
-// 获取所有 Soul 模板
-router.get('/soul-templates', (req, res) => {
-  try {
-    const templates = soulManager.getAvailableTemplates();
-    res.json(templates);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
