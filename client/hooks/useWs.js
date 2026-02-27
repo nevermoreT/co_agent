@@ -11,14 +11,14 @@ const getWsUrl = () => {
 };
 
 export function useWs(options = {}) {
-  const { onOutput, onExit, onError } = options;
+  const { onOutput, onExit, onError, onToolUse } = options;
   const [ready, setReady] = useState(false);
   const [runningAgentIds, setRunningAgentIds] = useState([]);
   const [lastError, setLastError] = useState(null);
   const wsRef = useRef(null);
   const reconnectRef = useRef(null);
-  const callbacksRef = useRef({ onOutput, onExit, onError });
-  callbacksRef.current = { onOutput, onExit, onError };
+  const callbacksRef = useRef({ onOutput, onExit, onError, onToolUse });
+  callbacksRef.current = { onOutput, onExit, onError, onToolUse };
 
   const connect = useCallback(() => {
     const url = getWsUrl();
@@ -57,6 +57,10 @@ export function useWs(options = {}) {
         if (msg.type === 'output' && msg.agentId != null) {
           logger.log('[useWs] output event for agentId:', msg.agentId, 'stream:', msg.stream, 'data length:', msg.data?.length || 0);
           callbacksRef.current.onOutput?.(msg.agentId, msg.stream, msg.data);
+        }
+        if (msg.type === 'tool_use' && msg.agentId != null) {
+          logger.log('[useWs] tool_use event for agentId:', msg.agentId, 'tool:', msg.tool, 'status:', msg.status);
+          callbacksRef.current.onToolUse?.(msg.agentId, { tool: msg.tool, title: msg.title, status: msg.status, output: msg.output });
         }
         if (msg.type === 'error') {
           logger.log('[useWs] error event:', msg.message);

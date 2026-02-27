@@ -390,3 +390,20 @@
   text-align: center;
   font-weight: var(--font-medium);
 }
+
+.chat-msg-truncated {
+  text-align: center;
+  padding: 8px 16px;
+  margin: 8px 20px;
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.chat-msg-truncated:hover {
+  background: var(--border-light);
+  color: var(--text-primary);
+}

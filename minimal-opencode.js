@@ -122,7 +122,8 @@ async function getLatestSessionId(cwd) {
   });
 }
 
-function parseNdjsonLine(line, onOutput, onSession) {
+function parseNdjsonLine(line, callbacks, onSession) {
+  const { onOutput, onToolUse } = callbacks;
   const raw = stripAnsi(line);
   if (!raw) return;
   
@@ -149,10 +150,19 @@ function parseNdjsonLine(line, onOutput, onSession) {
     // 文本输出
     if (obj.type === 'text' && obj.part?.text) {
       onOutput('stdout', obj.part.text);
-    } else if (obj.type === 'tool_use' && obj.part?.state?.output) {
-      const toolName = obj.part.tool || 'tool';
-      const title = obj.part.state.title || toolName;
-      onOutput('stdout', `\n[${title}]\n${obj.part.state.output}\n`);
+    } else if (obj.type === 'tool_use') {
+      const toolName = obj.part?.tool || 'tool';
+      const state = obj.part?.state || {};
+      const title = state.title || toolName;
+      const status = state.status || 'completed';
+      const output = state.output || '';
+      // 通过专门的 onToolUse 回调发送
+      console.log('[minimal-opencode] tool_use detected:', toolName, status);
+      if (onToolUse) {
+        onToolUse({ tool: toolName, title, status, output });
+      } else {
+        console.log('[minimal-opencode] WARNING: onToolUse callback not provided!');
+      }
     } else if (obj.type === 'permission_request') {
       onOutput('stderr', `[权限请求] ${obj.description || JSON.stringify(obj)}\n`);
     } else if (obj.type === 'step_start' || obj.type === 'step_finish') {
@@ -175,11 +185,11 @@ function parseNdjsonLine(line, onOutput, onSession) {
   }
 }
 
-function processPtyData(data, stdoutBuf, onOutput, onSession) {
+function processPtyData(data, stdoutBuf, callbacks, onSession) {
   const s = stdoutBuf.current + data;
   const lines = s.split(/\r?\n/);
   stdoutBuf.current = lines.pop() ?? '';
-  for (const line of lines) parseNdjsonLine(line, onOutput, onSession);
+  for (const line of lines) parseNdjsonLine(line, callbacks, onSession);
 }
 
 /**
@@ -220,6 +230,7 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
  * @param {Function} options.onOutput - 输出回调 (stream, data)
  * @param {Function} options.onExit - 退出回调 (code, signal)
  * @param {Function} [options.onSession] - 会话回调 (sessionId)，当检测到 session ID 时调用
+ * @param {Function} [options.onToolUse] - 工具调用回调 ({ tool, title, status, output })
  * @param {boolean} [options.continue=true] - 是否继续上一个会话（保持上下文）
  * @param {string} [options.sessionId] - 指定会话 ID（优先于 continue）
  * @param {string} [options.cwd] - 工作目录（确保会话在同一项目下）
@@ -246,8 +257,10 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
  * runOpencodeCli('hello', { continue: false });
  * ```
  */
-export function runOpencodeCli(prompt, { onOutput, onExit, onSession, continue: shouldContinue = true, sessionId, cwd } = {}) {
+export function runOpencodeCli(prompt, { onOutput, onExit, onSession, onToolUse, continue: shouldContinue = true, sessionId, cwd } = {}) {
   const isWin = process.platform === 'win32';
+  
+  const callbacks = { onOutput, onToolUse };
   
   const sessionConfig = buildSessionArgs({ continue: shouldContinue, sessionId });
   let sessionDetected = false;
@@ -302,10 +315,10 @@ export function runOpencodeCli(prompt, { onOutput, onExit, onSession, continue: 
       });
       const stdoutBuf = { current: '' };
       ptyProcess.on('data', (data) => {
-        processPtyData(data, stdoutBuf, onOutput, wrappedOnSession);
+        processPtyData(data, stdoutBuf, callbacks, wrappedOnSession);
       });
       ptyProcess.on('exit', (code, signal) => {
-        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, wrappedOnSession);
+        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, callbacks, wrappedOnSession);
         handleExit(code, signal);
       });
       console.log('[minimal-opencode] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
@@ -323,10 +336,10 @@ export function runOpencodeCli(prompt, { onOutput, onExit, onSession, continue: 
       });
       const stdoutBuf = { current: '' };
       ptyProcess.on('data', (data) => {
-        processPtyData(data, stdoutBuf, onOutput, wrappedOnSession);
+        processPtyData(data, stdoutBuf, callbacks, wrappedOnSession);
       });
       ptyProcess.on('exit', (code, signal) => {
-        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, onOutput, wrappedOnSession);
+        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, callbacks, wrappedOnSession);
         handleExit(code, signal);
       });
       console.log('[minimal-opencode] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
@@ -347,10 +360,10 @@ export function runOpencodeCli(prompt, { onOutput, onExit, onSession, continue: 
     const s = stdoutBuf + chunk.toString();
     const lines = s.split(/\r?\n/);
     stdoutBuf = lines.pop() ?? '';
-    for (const line of lines) parseNdjsonLine(line, onOutput, wrappedOnSession);
+    for (const line of lines) parseNdjsonLine(line, callbacks, wrappedOnSession);
   });
   child.stdout.on('end', () => {
-    if (stdoutBuf) parseNdjsonLine(stdoutBuf, onOutput, wrappedOnSession);
+    if (stdoutBuf) parseNdjsonLine(stdoutBuf, callbacks, wrappedOnSession);
   });
   child.stderr.on('data', (chunk) => onOutput('stderr', chunk.toString()));
   child.on('error', (err) => {

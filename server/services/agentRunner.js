@@ -244,7 +244,7 @@ export async function runClaudeCli(agentId, prompt, onOutput, onExit, conversati
   return true;
 }
 
-export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId) {
+export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId, onToolUse) {
   const key = String(agentId);
   if (runs.has(key)) {
     logger.log('[agentRunner] runOpencodeCli() blocked: agentId=%s already running', agentId);
@@ -278,6 +278,7 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId
 
   const { child } = runOpencodeCliImpl(enrichedPrompt, {
     onOutput,
+    onToolUse,
     onExit: (code, signal) => {
       logger.log('[agentRunner] runOpencodeCli() exit: agentId=%s code=%s signal=%s', agentId, code, signal);
       runs.delete(key);

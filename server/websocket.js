@@ -3,6 +3,40 @@ import * as agentRunner from './services/agentRunner.js';
 import db from './db.js';
 import logger from './logger.js';
 
+/**
+ * 创建节流输出函数，批量发送 WebSocket 消息
+ * 避免高频 chunk 触发前端大量重渲染
+ */
+function createThrottledOutput(send, agentId, delay = 80) {
+  let buffer = '';
+  let timer = null;
+
+  const flush = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (buffer) {
+      send({ type: 'output', agentId, stream: 'stdout', data: buffer });
+      buffer = '';
+    }
+  };
+
+  const push = (stream, data) => {
+    // stderr 不节流，直接发送
+    if (stream === 'stderr') {
+      send({ type: 'output', agentId, stream, data });
+      return;
+    }
+    buffer += data;
+    if (!timer) {
+      timer = setTimeout(flush, delay);
+    }
+  };
+
+  return { push, flush };
+}
+
 export function setupWebSocket(httpServer) {
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
@@ -51,7 +85,10 @@ export function setupWebSocket(httpServer) {
         }
         const ok = agentRunner.run(
           id,
-          (stream, data) => send({ type: 'output', agentId: id, stream, data }),
+          (() => {
+            const throttled = createThrottledOutput(send, id);
+            return (stream, data) => throttled.push(stream, data);
+          })(),
           (code, signal) => send({ type: 'exit', agentId: id, code, signal })
         );
         if (!ok) {
@@ -75,13 +112,15 @@ export function setupWebSocket(httpServer) {
           logger.log('[websocket] send: agentId=%s is claude-cli, calling runClaudeCli', id);
           (async () => {
             try {
+              const throttled = createThrottledOutput(send, id);
               const onOutput = (stream, data) => {
                 if (stream === 'stdout' && typeof data === 'string' && data.length > 0) {
                   logger.log('[claude-cli] stdout chunk: %d chars', data.length);
                 }
-                send({ type: 'output', agentId: id, stream, data });
+                throttled.push(stream, data);
               };
               const onExit = (code, signal) => {
+                throttled.flush();
                 logger.log('[claude-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
                 send({ type: 'exit', agentId: id, code, signal });
               };
@@ -100,17 +139,23 @@ export function setupWebSocket(httpServer) {
         if (agent && agent.builtin_key === 'opencode-cli') {
           logger.log('[websocket] send: agentId=%s is opencode-cli, calling runOpencodeCli', id);
           try {
+            const throttled = createThrottledOutput(send, id);
             const onOutput = (stream, data) => {
               if (stream === 'stdout' && typeof data === 'string' && data.length > 0) {
                 logger.log('[opencode-cli] stdout chunk:', data.length, 'chars');
               }
-              send({ type: 'output', agentId: id, stream, data });
+              throttled.push(stream, data);
+            };
+            const onToolUse = (toolData) => {
+              logger.log('[opencode-cli] tool_use:', toolData.tool, toolData.status);
+              send({ type: 'tool_use', agentId: id, tool: toolData.tool, title: toolData.title, status: toolData.status, output: toolData.output });
             };
             const onExit = (code, signal) => {
+              throttled.flush();
               logger.log('[opencode-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
               send({ type: 'exit', agentId: id, code, signal });
             };
-            const ok = agentRunner.runOpencodeCli(id, text, onOutput, onExit, convId);
+            const ok = agentRunner.runOpencodeCli(id, text, onOutput, onExit, convId, onToolUse);
             if (!ok) {
               logger.log('[websocket] send: runOpencodeCli failed for agentId=%s', id);
               send({ type: 'error', agentId: id, message: 'Opencode CLI start failed (already running?)' });

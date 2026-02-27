@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -7,8 +7,9 @@ import './MarkdownRenderer.css';
 /**
  * Markdown 渲染器组件
  * 支持：代码块、列表、表格、任务列表、引用等
+ * 使用 React.memo 避免内容未变时重复解析渲染
  */
-export function MarkdownRenderer({ content, className = '' }) {
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content, className = '' }) {
   if (!content) return null;
 
   return (
@@ -75,7 +76,7 @@ export function MarkdownRenderer({ content, className = '' }) {
       </ReactMarkdown>
     </div>
   );
-}
+});
 
 /**
  * Thinking 消息组件 - 折叠面板显示思考过程
@@ -117,4 +118,112 @@ export function ImageMessage({ src, alt, caption }) {
       {caption && <span className="image-caption">{caption}</span>}
     </div>
   );
+}
+
+/**
+ * 工具调用消息组件 - 折叠面板显示工具调用
+ */
+export function ToolUseMessage({ toolCalls }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  if (!toolCalls || toolCalls.length === 0) return null;
+  
+  const count = toolCalls.length;
+  const firstTool = toolCalls[0];
+  
+  return (
+    <div className="tool-use-message">
+      <button
+        className="tool-use-header"
+        onClick={() => setIsExpanded(!isExpanded)}
+        type="button"
+      >
+        <span className="tool-use-icon">{isExpanded ? '▼' : '▶'}</span>
+        <span className="tool-use-title">
+          <span className="tool-use-count">{count} 个工具调用</span>
+          <span className="tool-use-summary">{firstTool.title || firstTool.tool}</span>
+        </span>
+        <span className="tool-use-status">{toolCalls.every(t => t.status === 'completed') ? '✓' : '...'}</span>
+      </button>
+      {isExpanded && (
+        <div className="tool-use-content">
+          {toolCalls.map((tc, idx) => (
+            <div key={idx} className="tool-use-item">
+              <div className="tool-use-item-header">
+                <span className="tool-use-item-name">{tc.tool}</span>
+                <span className={`tool-use-item-status ${tc.status}`}>{tc.status}</span>
+              </div>
+              {tc.output && (
+                <div className="tool-use-item-output">
+                  <MarkdownRenderer content={tc.output} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 解析消息内容，提取工具调用和普通文本
+ * 工具调用格式：[[TOOL_USE:{json}]]
+ */
+export function parseMessageContent(content) {
+  if (!content) return { toolCalls: [], textParts: [] };
+  
+  const toolCalls = [];
+  const textParts = [];
+  const startMarker = '[[TOOL_USE:';
+  const endMarker = ']]';
+  
+  let i = 0;
+  let lastTextStart = 0;
+  
+  while (i < content.length) {
+    const startIdx = content.indexOf(startMarker, i);
+    if (startIdx === -1) break;
+    
+    if (startIdx > lastTextStart) {
+      textParts.push(content.substring(lastTextStart, startIdx));
+    }
+    
+    const jsonStart = startIdx + startMarker.length;
+    let braceCount = 0;
+    let jsonEnd = -1;
+    
+    for (let j = jsonStart; j < content.length; j++) {
+      if (content[j] === '{') braceCount++;
+      else if (content[j] === '}') {
+        braceCount--;
+        if (braceCount === 0) {
+          if (content.substring(j + 1, j + 1 + endMarker.length) === endMarker) {
+            jsonEnd = j + 1;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (jsonEnd !== -1) {
+      const jsonStr = content.substring(jsonStart, jsonEnd);
+      try {
+        const toolData = JSON.parse(jsonStr);
+        toolCalls.push(toolData);
+      } catch {
+        // JSON 解析失败
+      }
+      lastTextStart = jsonEnd + endMarker.length;
+      i = lastTextStart;
+    } else {
+      i = startIdx + 1;
+    }
+  }
+  
+  if (lastTextStart < content.length) {
+    textParts.push(content.substring(lastTextStart));
+  }
+  
+  return { toolCalls, textParts: textParts.filter(t => t.trim()) };
 }
