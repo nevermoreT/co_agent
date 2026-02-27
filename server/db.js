@@ -200,6 +200,14 @@ try {
   // column already exists
 }
 
+// Phase 3.2: Agent Soul 配置字段
+try {
+  db.run('ALTER TABLE agents ADD COLUMN soul TEXT DEFAULT "{}"');
+  save();
+} catch {
+  // column already exists
+}
+
 const wrap = {
   prepare(sql) {
     const stmt = db.prepare(sql);
