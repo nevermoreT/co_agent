@@ -153,13 +153,15 @@ function parseNdjsonLine(line, callbacks, onSession) {
     } else if (obj.type === 'tool_use') {
       const toolName = obj.part?.tool || 'tool';
       const state = obj.part?.state || {};
-      const title = state.title || toolName;
+      const title = obj.part?.title || state.title || toolName;
       const status = state.status || 'completed';
+      const input = state.input || {};
       const output = state.output || '';
+      const callID = obj.part?.callID || '';
       // 通过专门的 onToolUse 回调发送
-      console.log('[minimal-opencode] tool_use detected:', toolName, status);
+      console.log('[minimal-opencode] tool_use detected:', toolName, title, status);
       if (onToolUse) {
-        onToolUse({ tool: toolName, title, status, output });
+        onToolUse({ tool: toolName, title, status, input, output, callID });
       } else {
         console.log('[minimal-opencode] WARNING: onToolUse callback not provided!');
       }

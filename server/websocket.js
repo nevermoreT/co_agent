@@ -147,8 +147,17 @@ export function setupWebSocket(httpServer) {
               throttled.push(stream, data);
             };
             const onToolUse = (toolData) => {
-              logger.log('[opencode-cli] tool_use:', toolData.tool, toolData.status);
-              send({ type: 'tool_use', agentId: id, tool: toolData.tool, title: toolData.title, status: toolData.status, output: toolData.output });
+              logger.log('[opencode-cli] tool_use:', toolData.tool, toolData.title);
+              send({ 
+                type: 'tool_use', 
+                agentId: id, 
+                tool: toolData.tool, 
+                title: toolData.title, 
+                status: toolData.status, 
+                input: toolData.input,
+                output: toolData.output,
+                callID: toolData.callID
+              });
             };
             const onExit = (code, signal) => {
               throttled.flush();

@@ -150,12 +150,24 @@ export function ToolUseMessage({ toolCalls }) {
           {toolCalls.map((tc, idx) => (
             <div key={idx} className="tool-use-item">
               <div className="tool-use-item-header">
-                <span className="tool-use-item-name">{tc.tool}</span>
+                <span className="tool-use-item-tool">{tc.tool}</span>
                 <span className={`tool-use-item-status ${tc.status}`}>{tc.status}</span>
               </div>
+              {tc.title && tc.title !== tc.tool && (
+                <div className="tool-use-item-title">{tc.title}</div>
+              )}
+              {tc.input && Object.keys(tc.input).length > 0 && (
+                <div className="tool-use-item-input">
+                  <div className="tool-use-item-label">参数:</div>
+                  <pre className="tool-use-item-code">{JSON.stringify(tc.input, null, 2)}</pre>
+                </div>
+              )}
               {tc.output && (
                 <div className="tool-use-item-output">
-                  <MarkdownRenderer content={tc.output} />
+                  <div className="tool-use-item-label">结果:</div>
+                  <div className="tool-use-item-result">
+                    <MarkdownRenderer content={tc.output} />
+                  </div>
                 </div>
               )}
             </div>
