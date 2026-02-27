@@ -3,8 +3,10 @@ import path from 'path';
 import os from 'os';
 import db from '../db.js';
 import logger from '../logger.js';
+import { buildSoulSystemPrompt } from './soulPromptBuilder.js';
+import { getAgentSoul } from './soulManager.js';
 
-const DEFAULT_SYSTEM_PROMPT_TEMPLATE = `
+const _DEFAULT_SYSTEM_PROMPT_TEMPLATE = `
 # Agent 角色定义
 
 ## 名称
@@ -23,26 +25,21 @@ const DEFAULT_SYSTEM_PROMPT_TEMPLATE = `
 你正在参与一个多 Agent 协作对话。请基于你的专业领域提供回答。
 `;
 
-export function buildSystemPrompt(agentId, conversationId = null) {
+export function buildSystemPrompt(agentId, _conversationId = null) {
   const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(agentId);
   if (!agent) return '';
-  
-  let responsibilities;
-  try {
-    responsibilities = JSON.parse(agent.responsibilities || '[]');
-  } catch {
-    responsibilities = [];
+
+  // 获取 Soul 配置
+  const soul = getAgentSoul(agentId);
+
+  // 如果有 Soul 配置，使用 Soul 构建器
+  if (soul && Object.keys(soul).length > 0) {
+    const agentWithSoul = { ...agent, soul };
+    return buildSoulSystemPrompt(agentWithSoul);
   }
-  
-  const prompt = DEFAULT_SYSTEM_PROMPT_TEMPLATE
-    .replace('{agent_name}', agent.name || '助手')
-    .replace('{role}', agent.role || '通用助手')
-    .replace('{responsibilities}', responsibilities.length > 0 
-      ? responsibilities.map(r => `- ${r}`).join('\n') 
-      : '- 通用任务处理')
-    .replace('{custom_system_prompt}', agent.system_prompt || '无特殊指令');
-  
-  return prompt.trim();
+
+  // 否则使用基础构建器（Phase 3.1）
+  return buildBasicSystemPrompt(agent);
 }
 
 export function sanitizeForShell(str) {
@@ -80,15 +77,40 @@ export function deleteSystemPromptFile(filePath) {
 export function buildOpencodePrefix(agentId) {
   const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(agentId);
   if (!agent) return '';
-  
+
+  // 获取 Soul 配置
+  const soul = getAgentSoul(agentId);
+  logger.log('[systemPromptBuilder] buildOpencodePrefix: agentId=%d soul=%s', agentId, JSON.stringify(soul));
+
+  // 如果有 Soul 配置，使用完整的 Soul 系统提示词
+  if (soul && Object.keys(soul).length > 0) {
+    const agentWithSoul = { ...agent, soul };
+    const soulPrompt = buildSoulSystemPrompt(agentWithSoul);
+    logger.log('[systemPromptBuilder] buildOpencodePrefix: using soul prompt (%d chars)', soulPrompt.length);
+    // 将系统提示词作为前缀，用 XML 标签包裹
+    return `<system_context>
+${soulPrompt}
+</system_context>
+
+用户消息：`;
+  }
+
+  // 否则使用基础系统提示词
+  const basicPrompt = buildBasicSystemPrompt(agent);
+  logger.log('[systemPromptBuilder] buildOpencodePrefix: using basic prompt (%d chars)', basicPrompt.length);
+  if (basicPrompt) {
+    return `<system_context>
+${basicPrompt}
+</system_context>
+
+用户消息：`;
+  }
+
+  // 最简单的前缀
   let prefix = `[${agent.name}`;
   if (agent.role) prefix += ` - ${agent.role}`;
   prefix += '] ';
-  
-  if (prefix.length > 200) {
-    prefix = prefix.substring(0, 197) + '... ';
-  }
-  
+
   return prefix;
 }
 

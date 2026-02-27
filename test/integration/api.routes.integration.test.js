@@ -2,7 +2,7 @@
  * API 路由集成测试
  * 测试所有 API 端点的基本功能
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import express from 'express';
 
 // Mock 模块

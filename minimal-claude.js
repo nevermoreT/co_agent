@@ -22,11 +22,11 @@ import { randomUUID } from 'crypto';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__dirname, 'minimal-claude.js');
 
-let ptySpawn = null;
+let _ptySpawn = null;
 try {
   const require = createRequire(import.meta.url);
   const pty = require('node-pty');
-  ptySpawn = pty.spawn;
+  _ptySpawn = pty.spawn;
 } catch {
   // node-pty 未安装或原生模块加载失败时使用普通 spawn
 }
@@ -150,7 +150,7 @@ function extractJsonObjects(text) {
   return { objects: objects.map(o => o.text), remaining };
 }
 
-function processPtyData(data, stdoutBuf, onOutput, onSession, chunkNum) {
+function _processPtyData(data, stdoutBuf, onOutput, onSession, chunkNum) {
   const s = stdoutBuf.current + data;
   const { objects, remaining } = extractJsonObjects(s);
   
@@ -239,11 +239,11 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
  * ```
  */
 export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: shouldContinue = true, sessionId, cwd, systemPrompt, systemPromptFile } = {}) {
-  const isWin = process.platform === 'win32';
+  const _isWin = process.platform === 'win32';
 
   const sessionConfig = buildSessionArgs({ continue: shouldContinue, sessionId });
 
-  const escapeForShell = (arg) => {
+  const _escapeForShell = (arg) => {
     if (!arg) return '""';
     const escaped = arg.replace(/\n/g, ' ').replace(/\r/g, '');
     if (escaped.includes(' ') || escaped.includes('"') || escaped.includes("'") || escaped.includes('&') || escaped.includes('|')) {

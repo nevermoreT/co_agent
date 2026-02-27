@@ -6,8 +6,6 @@
  * 运行方式：node test/claude-cli-prompt.test.js
  */
 
-import assert from 'assert';
-
 // 模拟 memoryManager.buildAgentContext 的新逻辑
 function buildAgentContext(recentMessages) {
   if (recentMessages.length === 0) {
