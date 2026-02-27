@@ -1,10 +1,78 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { useGlobalMessages } from '../hooks/useGlobalMessages';
-import { MarkdownRenderer, ThinkingMessage } from './MarkdownRenderer';
+import { MarkdownRenderer, ThinkingMessage, ToolUseMessage, parseMessageContent } from './MarkdownRenderer';
 import logger from '../utils/logger';
 import './ChatPanel.css';
 
 const API = '/api';
+
+const VISIBLE_MESSAGE_LIMIT = 100;
+
+// 单条消息组件，使用 memo 避免不必要的重渲染
+const ChatMessage = memo(function ChatMessage({ m }) {
+  // Thinking 消息
+  if (m.message_type === 'thinking') {
+    return (
+      <ThinkingMessage
+        content={m.content}
+        agentName={m.agent_name || 'Agent'}
+      />
+    );
+  }
+
+  const { toolCalls, textParts } = parseMessageContent(m.content);
+
+  // 工具调用消息
+  if (toolCalls.length > 0) {
+    return (
+      <div className={`chat-msg chat-msg-${m.role || 'assistant'}`}>
+        <span className="chat-msg-role">
+          {m.role === 'user' ? '用户' : `@${m.agent_name || 'Agent'}`}
+        </span>
+        <div className="chat-msg-content markdown-content">
+          <ToolUseMessage toolCalls={toolCalls} />
+          {textParts.map((text, idx) => (
+            <MarkdownRenderer key={idx} content={text} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // 普通消息
+  return (
+    <div className={`chat-msg chat-msg-${m.role || 'assistant'}`}>
+      <span className="chat-msg-role">
+        {m.role === 'user' ? '用户' : `@${m.agent_name || 'Agent'}`}
+      </span>
+      <div className="chat-msg-content markdown-content">
+        <MarkdownRenderer content={m.content ?? ''} />
+      </div>
+    </div>
+  );
+});
+
+function StreamingMessage({ content, agentName, toolCalls: externalToolCalls }) {
+  const { toolCalls: parsedToolCalls, textParts } = parseMessageContent(content);
+  const toolCalls = externalToolCalls && externalToolCalls.length > 0 ? externalToolCalls : parsedToolCalls;
+  
+  return (
+    <div className="chat-msg chat-msg-assistant">
+      <span className="chat-msg-role">@{agentName}</span>
+      <div className="chat-msg-content chat-msg-streaming">
+        {toolCalls.length > 0 && (
+          <ToolUseMessage toolCalls={toolCalls} />
+        )}
+        {textParts.map((text, idx) => (
+          <MarkdownRenderer key={idx} content={text} />
+        ))}
+        {toolCalls.length === 0 && textParts.length === 0 && (
+          <MarkdownRenderer content={content} />
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function ChatPanel({
   agents,
@@ -12,6 +80,7 @@ export default function ChatPanel({
   wsReady,
   runningAgentIds,
   streamingContent,
+  streamingToolCalls,
   streamingAgentId,
   onStart,
   onStop,
@@ -25,9 +94,17 @@ export default function ChatPanel({
   const prevStreamingRef = useRef('');
   const { messages, refetch, addMessage } = useGlobalMessages(selectedTaskId);
 
-  const filteredAgents = mentionState.active
-    ? agents.filter((a) => a.name.toLowerCase().includes(mentionState.query.toLowerCase()))
-    : [];
+  const sortedAgents = useMemo(
+    () => [...agents].sort((a, b) => b.name.length - a.name.length),
+    [agents]
+  );
+
+  const filteredAgents = useMemo(
+    () => mentionState.active
+      ? agents.filter((a) => a.name.toLowerCase().includes(mentionState.query.toLowerCase()))
+      : [],
+    [agents, mentionState.active, mentionState.query]
+  );
 
   useEffect(() => {
     if (prevStreamingRef.current && !streamingContent) {
@@ -40,13 +117,12 @@ export default function ChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
 
-  const parseTargetAgent = (text) => {
+  const parseTargetAgent = useCallback((text) => {
     if (!text.startsWith('@')) {
       return null;
     }
 
     const textWithoutAt = text.slice(1);
-    const sortedAgents = [...agents].sort((a, b) => b.name.length - a.name.length);
 
     for (const agent of sortedAgents) {
       const nameLower = agent.name.toLowerCase();
@@ -64,7 +140,7 @@ export default function ChatPanel({
     }
 
     return null;
-  };
+  }, [sortedAgents]);
 
   const handleInputChange = (e) => {
     const value = e.target.value;
@@ -210,18 +286,14 @@ export default function ChatPanel({
     }
   };
 
-  const stopAgent = (agentId) => {
+  const stopAgent = useCallback((agentId) => {
     onStop(agentId);
-  };
+  }, [onStop]);
 
-  const getStreamingAgent = () => {
-    if (streamingAgentId) {
-      return agents.find((a) => a.id === streamingAgentId);
-    }
-    return null;
-  };
-
-  const streamingAgent = getStreamingAgent();
+  const streamingAgent = useMemo(
+    () => streamingAgentId ? agents.find((a) => a.id === streamingAgentId) : null,
+    [streamingAgentId, agents]
+  );
 
   return (
     <div className="chat-panel">
@@ -249,37 +321,31 @@ export default function ChatPanel({
             <div className="chat-empty-desc">从左侧对话列表中选择一个对话，或创建新对话</div>
           </div>
         )}
-        {currentConversation && (messages || []).filter(Boolean).map((m) => {
-          // Thinking 消息单独渲染为折叠面板
-          if (m.message_type === 'thinking') {
-            return (
-              <ThinkingMessage
-                key={m.id}
-                content={m.content}
-                agentName={m.agent_name || 'Agent'}
-              />
-            );
-          }
-
-          // 普通消息使用 Markdown 渲染
+        {currentConversation && (() => {
+          const allMessages = (messages || []).filter(Boolean);
+          const truncated = allMessages.length > VISIBLE_MESSAGE_LIMIT;
+          const visibleMessages = truncated
+            ? allMessages.slice(-VISIBLE_MESSAGE_LIMIT)
+            : allMessages;
           return (
-            <div key={m.id} className={`chat-msg chat-msg-${m.role || 'assistant'}`}>
-              <span className="chat-msg-role">
-                {m.role === 'user' ? '用户' : `@${m.agent_name || 'Agent'}`}
-              </span>
-              <div className="chat-msg-content markdown-content">
-                <MarkdownRenderer content={m.content ?? ''} />
-              </div>
-            </div>
+            <>
+              {truncated && (
+                <div className="chat-msg-truncated" onClick={refetch}>
+                  已隐藏 {allMessages.length - VISIBLE_MESSAGE_LIMIT} 条早期消息，点击加载更多
+                </div>
+              )}
+              {visibleMessages.map((m) => (
+                <ChatMessage key={m.id} m={m} />
+              ))}
+            </>
           );
-        })}
+        })()}
         {currentConversation && streamingContent && streamingAgent && (
-          <div className="chat-msg chat-msg-assistant">
-            <span className="chat-msg-role">@{streamingAgent.name}</span>
-            <div className="chat-msg-content chat-msg-streaming">
-              <MarkdownRenderer content={streamingContent} />
-            </div>
-          </div>
+          <StreamingMessage 
+            content={streamingContent} 
+            agentName={streamingAgent.name}
+            toolCalls={streamingToolCalls}
+          />
         )}
         {currentConversation && <div ref={messagesEndRef} />}
       </div>

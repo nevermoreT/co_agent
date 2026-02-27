@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import TaskPanel from './components/TaskPanel';
 import ChatPanel from './components/ChatPanel';
 import RightPanel from './components/RightPanel';
@@ -15,6 +15,7 @@ export default function App() {
   const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [streaming, setStreaming] = useState({});
   const [streamingAgentId, setStreamingAgentId] = useState(null);
+  const [streamingToolCalls, setStreamingToolCalls] = useState({});
   const streamingRef = useRef({});
 
   const { agents, refetch: refetchAgents } = useAgents();
@@ -22,7 +23,7 @@ export default function App() {
 
   // 默认选中"创世碎碎念"对话
   useEffect(() => {
-    logger.log('[App] useEffect: tasksLoading=%s tasks.length=%d selectedConversationId=%s', 
+    logger.log('[App] useEffect: tasksLoading=%s tasks.length=%d selectedConversationId=%s',
       tasksLoading, tasks.length, selectedConversationId);
     if (!tasksLoading && tasks.length > 0 && !selectedConversationId) {
       const defaultConv = tasks.find(t => t.title === DEFAULT_CONVERSATION_TITLE);
@@ -37,26 +38,40 @@ export default function App() {
   }, [tasks, tasksLoading, selectedConversationId]);
 
   // Get current conversation object
-  const currentConversation = tasks.find(t => t.id === selectedConversationId);
+  const currentConversation = useMemo(
+    () => tasks.find(t => t.id === selectedConversationId),
+    [tasks, selectedConversationId]
+  );
+
   const { ready, runningAgentIds, lastError, clearError, sendStart, sendStop, sendText } = useWs({
     onOutput(agentId, stream, data) {
-      logger.log('[App] onOutput: agentId=%s stream=%s data.length=%d', agentId, stream, data?.length || 0);
       const str = typeof data === 'string' ? data : String(data ?? '');
       const prev = streamingRef.current[agentId] || '';
       const nextContent = prev + str;
-      streamingRef.current = { ...streamingRef.current, [agentId]: nextContent };
+      streamingRef.current[agentId] = nextContent;
+      // 直接更新状态，服务端已有 80ms 节流
       setStreaming((s) => ({ ...s, [agentId]: nextContent }));
+      setStreamingAgentId(agentId);
+    },
+    onToolUse(agentId, toolData) {
+      logger.log('[App] onToolUse: agentId=%s tool=%s status=%s', agentId, toolData.tool, toolData.status);
+      setStreamingToolCalls((prev) => ({
+        ...prev,
+        [agentId]: [...(prev[agentId] || []), toolData],
+      }));
       setStreamingAgentId(agentId);
     },
     onExit(agentId) {
       logger.log('[App] onExit: agentId=%s selectedConversationId=%s', agentId, selectedConversationId);
+
       const content = streamingRef.current[agentId] || '';
-      logger.log('[App] onExit: saving assistant message, content.length=%d', content.length);
+      const toolCalls = streamingToolCalls[agentId] || [];
+      logger.log('[App] onExit: saving assistant message, content.length=%d toolCalls=%d', content.length, toolCalls.length);
 
       const agent = agents.find((a) => a.id === agentId);
       const agentName = agent?.name || 'Agent';
 
-      if (content.trim()) {
+      if (content.trim() || toolCalls.length > 0) {
         fetch(`${API}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -66,16 +81,20 @@ export default function App() {
             agent_id: agentId,
             agent_name: agentName,
             task_id: selectedConversationId,
+            metadata: toolCalls.length > 0 ? JSON.stringify({ tool_calls: toolCalls }) : null,
           }),
         }).catch((err) => {
           logger.error('[App] failed to save assistant message:', err);
         });
       }
-      const next = { ...streamingRef.current };
-      delete next[agentId];
-      streamingRef.current = next;
+      delete streamingRef.current[agentId];
       setStreaming((s) => {
         const o = { ...s };
+        delete o[agentId];
+        return o;
+      });
+      setStreamingToolCalls((prev) => {
+        const o = { ...prev };
         delete o[agentId];
         return o;
       });
@@ -90,12 +109,15 @@ export default function App() {
     sendText(agentId, text, conversationId);
   }, [sendText]);
 
-  const getStreamingContent = () => {
-    if (streamingAgentId && streaming[streamingAgentId]) {
-      return streaming[streamingAgentId];
-    }
-    return '';
-  };
+  const streamingContent = useMemo(
+    () => (streamingAgentId && streaming[streamingAgentId]) ? streaming[streamingAgentId] : '',
+    [streamingAgentId, streaming]
+  );
+
+  const currentStreamingToolCalls = useMemo(
+    () => (streamingAgentId && streamingToolCalls[streamingAgentId]) ? streamingToolCalls[streamingAgentId] : [],
+    [streamingAgentId, streamingToolCalls]
+  );
 
   return (
     <div className="app">
@@ -120,7 +142,8 @@ export default function App() {
           selectedTaskId={selectedConversationId}
           wsReady={ready}
           runningAgentIds={runningAgentIds}
-          streamingContent={getStreamingContent()}
+          streamingContent={streamingContent}
+          streamingToolCalls={currentStreamingToolCalls}
           streamingAgentId={streamingAgentId}
           onStart={sendStart}
           onStop={sendStop}

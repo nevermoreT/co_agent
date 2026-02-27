@@ -6,6 +6,13 @@ import { runClaudeCli as runClaudeCliImpl } from '../../minimal-claude.js';
 import { runOpencodeCli as runOpencodeCliImpl } from '../../minimal-opencode.js';
 import * as sessionManager from './sessionManager.js';
 import * as memoryManager from './memoryManager.js';
+import { 
+  buildSystemPrompt, 
+  buildOpencodePrefix, 
+  writeSystemPromptFile, 
+  deleteSystemPromptFile,
+  containsSpecialChars 
+} from './systemPromptBuilder.js';
 
 const runs = new Map();
 
@@ -156,11 +163,13 @@ export function run(agentId, onOutput, onExit) {
  * 内置 Claude CLI：一问一答，每次 send 触发一次进程，流式回传解析后的 stdout。
  * 调用前由 websocket 确认 agent.builtin_key === 'claude-cli'。
  * 
+ * Phase 3.1: 使用 --append-system-prompt-file 注入 Agent 角色
+ * 
  * 会话管理：
  * - 使用 sessionManager 管理每个 agent 在每个对话中的 session
- * - 使用 memoryManager 提供记忆上下文
+ * - 使用 memoryManager 提供记忆上下文（Layer 3）
  */
-export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) {
+export async function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) {
   const key = String(agentId);
   if (runs.has(key)) {
     logger.log('[agentRunner] runClaudeCli() blocked: agentId=%s already running', agentId);
@@ -173,16 +182,28 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) 
     return false;
   }
 
-  // 构建上下文，避免使用括号和引号（Windows shell 特殊字符会导致 prompt 丢失）
-  // 详见 doc/bugfix-windows-shell-special-chars.md
-  const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
+  // Phase 3.1: 构建 System Prompt (Layer 1: Agent 角色)
+  const systemPrompt = buildSystemPrompt(agentId, conversationId);
+  logger.log('[agentRunner] runClaudeCli() systemPrompt: %d chars', systemPrompt.length);
   
-  // 调试日志
-  logger.log('[agentRunner] runClaudeCli() memoryContext (%d chars):', memoryContext?.length || 0);
-  if (memoryContext) {
-    logger.log('[agentRunner] runClaudeCli() memoryContext content: %s', memoryContext);
+  // 决定使用文件还是直接传参
+  let systemPromptFile = null;
+  const useFile = systemPrompt.length > 2000 || containsSpecialChars(systemPrompt);
+  
+  if (useFile && systemPrompt) {
+    try {
+      systemPromptFile = await writeSystemPromptFile(systemPrompt);
+      logger.log('[agentRunner] runClaudeCli() using system prompt file: %s', systemPromptFile);
+    } catch (e) {
+      logger.error('[agentRunner] runClaudeCli() failed to write system prompt file:', e);
+    }
   }
+
+  // Layer 3: 记忆上下文（暂时保留现有逻辑）
+  const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
+  logger.log('[agentRunner] runClaudeCli() memoryContext (%d chars):', memoryContext?.length || 0);
   
+  // Layer 4: 纯净用户输入
   let enrichedPrompt;
   if (memoryContext) {
     enrichedPrompt = `${prompt} - 上下文: ${memoryContext}`;
@@ -198,6 +219,10 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) 
     onOutput,
     onExit: (code, signal) => {
       logger.log('[agentRunner] runClaudeCli() exit: agentId=%s code=%s signal=%s', agentId, code, signal);
+      // 清理临时文件
+      if (systemPromptFile) {
+        deleteSystemPromptFile(systemPromptFile);
+      }
       runs.delete(key);
       processTimestamps.delete(key);
       onExit && onExit(code, signal);
@@ -209,15 +234,17 @@ export function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) 
       }
     },
     sessionId,
-    // 如果有 sessionId 则恢复会话，否则开始新会话（不使用 --continue）
     continue: false,
+    // Phase 3.1: 注入 system prompt
+    systemPrompt: useFile ? null : systemPrompt,
+    systemPromptFile: systemPromptFile,
   });
-  runs.set(key, { process: child, conversationId });
+  runs.set(key, { process: child, conversationId, systemPromptFile });
   updateProcessTimestamp(agentId);
   return true;
 }
 
-export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId) {
+export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId, onToolUse) {
   const key = String(agentId);
   if (runs.has(key)) {
     logger.log('[agentRunner] runOpencodeCli() blocked: agentId=%s already running', agentId);
@@ -230,13 +257,19 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId
     return false;
   }
   
+  // Phase 3.1: 构建 Opencode 前缀（角色信息）
+  const rolePrefix = buildOpencodePrefix(agentId);
+  logger.log('[agentRunner] runOpencodeCli() rolePrefix: %s', rolePrefix);
+  
+  // Layer 3: 记忆上下文
   const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
+  
+  // Layer 4: 用户输入 + 前缀
   let enrichedPrompt;
   if (memoryContext) {
-    // 避免使用括号和引号（Windows shell 特殊字符）
-    enrichedPrompt = `${prompt} - 上下文: ${memoryContext}`;
+    enrichedPrompt = `${rolePrefix}${prompt} - 上下文: ${memoryContext}`;
   } else {
-    enrichedPrompt = prompt;
+    enrichedPrompt = `${rolePrefix}${prompt}`;
   }
 
   const sessionId = sessionManager.getSession(agentId, conversationId);
@@ -245,6 +278,7 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId
 
   const { child } = runOpencodeCliImpl(enrichedPrompt, {
     onOutput,
+    onToolUse,
     onExit: (code, signal) => {
       logger.log('[agentRunner] runOpencodeCli() exit: agentId=%s code=%s signal=%s', agentId, code, signal);
       runs.delete(key);
@@ -258,7 +292,6 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId
       }
     },
     sessionId,
-    // 如果有 sessionId 则恢复会话，否则开始新会话（不使用 --continue）
     continue: false,
   });
   runs.set(key, { process: child, conversationId });

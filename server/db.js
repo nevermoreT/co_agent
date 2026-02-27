@@ -178,6 +178,28 @@ try {
   // column already exists
 }
 
+// Phase 3.1: Agent 角色配置字段
+try {
+  db.run('ALTER TABLE agents ADD COLUMN role TEXT DEFAULT ""');
+  save();
+} catch {
+  // column already exists
+}
+
+try {
+  db.run('ALTER TABLE agents ADD COLUMN responsibilities TEXT DEFAULT "[]"');
+  save();
+} catch {
+  // column already exists
+}
+
+try {
+  db.run('ALTER TABLE agents ADD COLUMN system_prompt TEXT DEFAULT ""');
+  save();
+} catch {
+  // column already exists
+}
+
 const wrap = {
   prepare(sql) {
     const stmt = db.prepare(sql);
@@ -224,8 +246,29 @@ wrap.prepare.bind(wrap);
     const count = wrap.prepare('SELECT COUNT(*) as c FROM agents').get();
     if (count.c < 5) {
       wrap.prepare(
-        'INSERT INTO agents (name, cli_command, cli_cwd, builtin_key) VALUES (?, ?, ?, ?)'
-      ).run('Claude CLI', 'builtin:claude-cli', null, 'claude-cli');
+        'INSERT INTO agents (name, cli_command, cli_cwd, builtin_key, role, responsibilities, system_prompt) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(
+        'Claude CLI', 
+        'builtin:claude-cli', 
+        null, 
+        'claude-cli',
+        '架构师',
+        JSON.stringify(['代码审查', '架构设计', '技术决策', '性能优化建议']),
+        '你是一个专业的软件架构师。注重代码质量、可维护性和性能。回答时优先提供代码示例。'
+      );
+    }
+  } else {
+    // 更新已有 Claude CLI 的角色配置（如果为空）
+    const existing = wrap.prepare('SELECT role FROM agents WHERE id = ?').get(claudeRow.id);
+    if (!existing.role) {
+      wrap.prepare(
+        'UPDATE agents SET role = ?, responsibilities = ?, system_prompt = ? WHERE id = ?'
+      ).run(
+        '架构师',
+        JSON.stringify(['代码审查', '架构设计', '技术决策', '性能优化建议']),
+        '你是一个专业的软件架构师。注重代码质量、可维护性和性能。回答时优先提供代码示例。',
+        claudeRow.id
+      );
     }
   }
   // Seed Opencode CLI
@@ -234,8 +277,29 @@ wrap.prepare.bind(wrap);
     const count = wrap.prepare('SELECT COUNT(*) as c FROM agents').get();
     if (count.c < 5) {
       wrap.prepare(
-        'INSERT INTO agents (name, cli_command, cli_cwd, builtin_key) VALUES (?, ?, ?, ?)'
-      ).run('Opencode CLI', 'builtin:opencode-cli', null, 'opencode-cli');
+        'INSERT INTO agents (name, cli_command, cli_cwd, builtin_key, role, responsibilities, system_prompt) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(
+        'Opencode CLI', 
+        'builtin:opencode-cli', 
+        null, 
+        'opencode-cli',
+        '开发者助手',
+        JSON.stringify(['代码生成', 'Bug 修复', '功能实现', '技术问答']),
+        '你是一个高效的开发者助手。快速理解需求并提供可用的代码实现。'
+      );
+    }
+  } else {
+    // 更新已有 Opencode CLI 的角色配置（如果为空）
+    const existing = wrap.prepare('SELECT role FROM agents WHERE id = ?').get(opencodeRow.id);
+    if (!existing.role) {
+      wrap.prepare(
+        'UPDATE agents SET role = ?, responsibilities = ?, system_prompt = ? WHERE id = ?'
+      ).run(
+        '开发者助手',
+        JSON.stringify(['代码生成', 'Bug 修复', '功能实现', '技术问答']),
+        '你是一个高效的开发者助手。快速理解需求并提供可用的代码实现。',
+        opencodeRow.id
+      );
     }
   }
 })();
