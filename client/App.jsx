@@ -44,7 +44,14 @@ export default function App() {
   );
 
   const { ready, runningAgentIds, lastError, clearError, sendStart, sendStop, sendText } = useWs({
-    onOutput(agentId, stream, data) {
+    onOutput(agentId, stream, data, msgConversationId) {
+      // 过滤非当前对话的消息
+      if (msgConversationId != null && msgConversationId !== selectedConversationId) {
+        logger.log('[App] onOutput: ignoring message for different conversation: %s vs current %s', 
+          msgConversationId, selectedConversationId);
+        return;
+      }
+      
       const str = typeof data === 'string' ? data : String(data ?? '');
       const prev = streamingRef.current[agentId] || '';
       const nextContent = prev + str;
@@ -53,7 +60,14 @@ export default function App() {
       setStreaming((s) => ({ ...s, [agentId]: nextContent }));
       setStreamingAgentId(agentId);
     },
-    onToolUse(agentId, toolData) {
+    onToolUse(agentId, toolData, msgConversationId) {
+      // 过滤非当前对话的消息
+      if (msgConversationId != null && msgConversationId !== selectedConversationId) {
+        logger.log('[App] onToolUse: ignoring message for different conversation: %s vs current %s', 
+          msgConversationId, selectedConversationId);
+        return;
+      }
+      
       logger.log('[App] onToolUse: agentId=%s tool=%s status=%s', agentId, toolData.tool, toolData.status);
       setStreamingToolCalls((prev) => ({
         ...prev,
@@ -61,8 +75,31 @@ export default function App() {
       }));
       setStreamingAgentId(agentId);
     },
-    onExit(agentId) {
-      logger.log('[App] onExit: agentId=%s selectedConversationId=%s', agentId, selectedConversationId);
+    onExit(agentId, code, signal, msgConversationId) {
+      logger.log('[App] onExit: agentId=%s selectedConversationId=%s msgConversationId=%s', 
+        agentId, selectedConversationId, msgConversationId);
+      
+      // 如果消息指定了 conversationId 但不匹配当前对话，不处理
+      if (msgConversationId != null && msgConversationId !== selectedConversationId) {
+        logger.log('[App] onExit: ignoring exit for different conversation: %s vs current %s', 
+          msgConversationId, selectedConversationId);
+        // 仍然清理本地状态，但不保存消息
+        delete streamingRef.current[agentId];
+        setStreaming((s) => {
+          const o = { ...s };
+          delete o[agentId];
+          return o;
+        });
+        setStreamingToolCalls((prev) => {
+          const o = { ...prev };
+          delete o[agentId];
+          return o;
+        });
+        if (streamingAgentId === agentId) {
+          setStreamingAgentId(null);
+        }
+        return;
+      }
 
       const content = streamingRef.current[agentId] || '';
       const toolCalls = streamingToolCalls[agentId] || [];

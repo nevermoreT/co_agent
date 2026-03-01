@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(opencode:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(cat:*)"
     ]
   }
 }

@@ -36,13 +36,17 @@ export function useWs(options = {}) {
       try {
         const msg = JSON.parse(ev.data);
         logger.log('[useWs] received message:', msg.type, msg);
+        
+        // 提取 conversationId（如果存在）
+        const msgConversationId = msg.conversationId != null ? Number(msg.conversationId) : null;
+        
         if (msg.type === 'status' && Array.isArray(msg.running)) {
           setRunningAgentIds(msg.running);
         }
         if (msg.type === 'exit' && msg.agentId != null) {
-          logger.log('[useWs] exit event for agentId:', msg.agentId, 'code:', msg.code, 'signal:', msg.signal);
+          logger.log('[useWs] exit event for agentId:', msg.agentId, 'code:', msg.code, 'signal:', msg.signal, 'conversationId:', msgConversationId);
           setRunningAgentIds((prev) => prev.filter((id) => id !== msg.agentId));
-          callbacksRef.current.onExit?.(msg.agentId, msg.code, msg.signal);
+          callbacksRef.current.onExit?.(msg.agentId, msg.code, msg.signal, msgConversationId);
         }
         if (msg.type === 'started' && msg.agentId != null) {
           logger.log('[useWs] started event for agentId:', msg.agentId);
@@ -55,24 +59,24 @@ export function useWs(options = {}) {
           setRunningAgentIds((prev) => prev.filter((id) => id !== msg.agentId));
         }
         if (msg.type === 'output' && msg.agentId != null) {
-          logger.log('[useWs] output event for agentId:', msg.agentId, 'stream:', msg.stream, 'data length:', msg.data?.length || 0);
-          callbacksRef.current.onOutput?.(msg.agentId, msg.stream, msg.data);
+          logger.log('[useWs] output event for agentId:', msg.agentId, 'stream:', msg.stream, 'data length:', msg.data?.length || 0, 'conversationId:', msgConversationId);
+          callbacksRef.current.onOutput?.(msg.agentId, msg.stream, msg.data, msgConversationId);
         }
         if (msg.type === 'tool_use' && msg.agentId != null) {
-          logger.log('[useWs] tool_use event for agentId:', msg.agentId, 'tool:', msg.tool, 'title:', msg.title);
-          callbacksRef.current.onToolUse?.(msg.agentId, { 
-            tool: msg.tool, 
-            title: msg.title, 
-            status: msg.status, 
+          logger.log('[useWs] tool_use event for agentId:', msg.agentId, 'tool:', msg.tool, 'title:', msg.title, 'conversationId:', msgConversationId);
+          callbacksRef.current.onToolUse?.(msg.agentId, {
+            tool: msg.tool,
+            title: msg.title,
+            status: msg.status,
             input: msg.input,
             output: msg.output,
             callID: msg.callID
-          });
+          }, msgConversationId);
         }
         if (msg.type === 'error') {
-          logger.log('[useWs] error event:', msg.message);
+          logger.log('[useWs] error event:', msg.message, 'conversationId:', msgConversationId);
           setLastError(msg.message || 'Unknown error');
-          callbacksRef.current.onError?.(msg);
+          callbacksRef.current.onError?.(msg, msgConversationId);
         }
       } catch (e) {
         logger.error('[useWs] failed to parse message:', e);

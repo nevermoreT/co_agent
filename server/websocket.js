@@ -41,6 +41,11 @@ export function setupWebSocket(httpServer) {
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
   wss.on('connection', (ws) => {
+    // 存储当前 WebSocket 连接正在处理的 conversationId
+    const wsContext = {
+      currentConversationId: null,
+    };
+
     const send = (payload) => {
       if (ws.readyState !== 1) return; // 1 = OPEN
       try {
@@ -107,12 +112,21 @@ export function setupWebSocket(httpServer) {
           return;
         }
         logger.log('[websocket] send: agentId=%s convId=%s', id, convId);
+        
+        // 存储当前对话 ID 到 WebSocket 上下文
+        wsContext.currentConversationId = convId;
+        
+        // 包装 send 函数，自动添加 conversationId
+        const sendWithContext = (payload) => {
+          send({ ...payload, conversationId: wsContext.currentConversationId });
+        };
+        
         const agent = db.prepare('SELECT builtin_key FROM agents WHERE id = ?').get(id);
         if (agent && agent.builtin_key === 'claude-cli') {
           logger.log('[websocket] send: agentId=%s is claude-cli, calling runClaudeCli', id);
           (async () => {
             try {
-              const throttled = createThrottledOutput(send, id);
+              const throttled = createThrottledOutput(sendWithContext, id);
               const onOutput = (stream, data) => {
                 if (stream === 'stdout' && typeof data === 'string' && data.length > 0) {
                   logger.log('[claude-cli] stdout chunk: %d chars', data.length);
@@ -121,12 +135,12 @@ export function setupWebSocket(httpServer) {
               };
               const onToolUse = (toolData) => {
                 logger.log('[claude-cli] tool_use:', toolData.tool, toolData.title);
-                send({ 
-                  type: 'tool_use', 
-                  agentId: id, 
-                  tool: toolData.tool, 
-                  title: toolData.title, 
-                  status: toolData.status, 
+                sendWithContext({
+                  type: 'tool_use',
+                  agentId: id,
+                  tool: toolData.tool,
+                  title: toolData.title,
+                  status: toolData.status,
                   input: toolData.input,
                   output: toolData.output,
                   callID: toolData.callID
@@ -135,16 +149,16 @@ export function setupWebSocket(httpServer) {
               const onExit = (code, signal) => {
                 throttled.flush();
                 logger.log('[claude-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
-                send({ type: 'exit', agentId: id, code, signal });
+                sendWithContext({ type: 'exit', agentId: id, code, signal });
               };
               const ok = await agentRunner.runClaudeCli(id, text, onOutput, onExit, convId, onToolUse);
               if (!ok) {
                 logger.log('[websocket] send: runClaudeCli failed for agentId=%s', id);
-                send({ type: 'error', agentId: id, message: 'Claude CLI start failed (already running?)' });
+                sendWithContext({ type: 'error', agentId: id, message: 'Claude CLI start failed (already running?)' });
               }
             } catch (err) {
               logger.error('[websocket] runClaudeCli error:', err);
-              send({ type: 'error', agentId: id, message: String(err?.message || err) });
+              sendWithContext({ type: 'error', agentId: id, message: String(err?.message || err) });
             }
           })();
           return;
@@ -152,7 +166,7 @@ export function setupWebSocket(httpServer) {
         if (agent && agent.builtin_key === 'opencode-cli') {
           logger.log('[websocket] send: agentId=%s is opencode-cli, calling runOpencodeCli', id);
           try {
-            const throttled = createThrottledOutput(send, id);
+            const throttled = createThrottledOutput(sendWithContext, id);
             const onOutput = (stream, data) => {
               if (stream === 'stdout' && typeof data === 'string' && data.length > 0) {
                 logger.log('[opencode-cli] stdout chunk:', data.length, 'chars');
@@ -161,12 +175,12 @@ export function setupWebSocket(httpServer) {
             };
             const onToolUse = (toolData) => {
               logger.log('[opencode-cli] tool_use:', toolData.tool, toolData.title);
-              send({ 
-                type: 'tool_use', 
-                agentId: id, 
-                tool: toolData.tool, 
-                title: toolData.title, 
-                status: toolData.status, 
+              sendWithContext({
+                type: 'tool_use',
+                agentId: id,
+                tool: toolData.tool,
+                title: toolData.title,
+                status: toolData.status,
                 input: toolData.input,
                 output: toolData.output,
                 callID: toolData.callID
@@ -175,24 +189,55 @@ export function setupWebSocket(httpServer) {
             const onExit = (code, signal) => {
               throttled.flush();
               logger.log('[opencode-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
-              send({ type: 'exit', agentId: id, code, signal });
+              sendWithContext({ type: 'exit', agentId: id, code, signal });
             };
             const ok = agentRunner.runOpencodeCli(id, text, onOutput, onExit, convId, onToolUse);
             if (!ok) {
               logger.log('[websocket] send: runOpencodeCli failed for agentId=%s', id);
-              send({ type: 'error', agentId: id, message: 'Opencode CLI start failed (already running?)' });
+              sendWithContext({ type: 'error', agentId: id, message: 'Opencode CLI start failed (already running?)' });
             }
           } catch (err) {
             logger.error('[websocket] runOpencodeCli error:', err);
-            send({ type: 'error', agentId: id, message: String(err?.message || err) });
+            sendWithContext({ type: 'error', agentId: id, message: String(err?.message || err) });
           }
           return;
         }
         logger.log('[websocket] send: agentId=%s is regular agent, calling sendInput', id);
-        const ok = agentRunner.sendInput(id, text);
-        if (!ok) {
-          logger.log('[websocket] send: sendInput failed for agentId=%s', id);
-          send({ type: 'error', agentId: id, message: 'Agent not running or stdin closed' });
+        
+        // 对于常规 Agent，也需要包装输出回调
+        const agentProc = agentRunner.getProcess(id);
+        if (agentProc) {
+          // 如果进程已存在，直接发送输入
+          const ok = agentRunner.sendInput(id, text);
+          if (!ok) {
+            logger.log('[websocket] send: sendInput failed for agentId=%s', id);
+            send({ type: 'error', agentId: id, message: 'Agent not running or stdin closed' });
+          }
+        } else {
+          // 启动新进程，包装回调
+          const throttled = createThrottledOutput(
+            (payload) => send({ ...payload, conversationId: convId }), 
+            id
+          );
+          
+          const ok = agentRunner.run(
+            id,
+            (stream, data) => throttled.push(stream, data),
+            (code, signal) => {
+              throttled.flush();
+              send({ type: 'exit', agentId: id, code, signal, conversationId: convId });
+            }
+          );
+          
+          if (!ok) {
+            logger.log('[websocket] send: run failed for agentId=%s', id);
+            send({ type: 'error', agentId: id, message: 'Failed to start agent' });
+          } else {
+            // 发送输入
+            setTimeout(() => {
+              agentRunner.sendInput(id, text);
+            }, 100);
+          }
         }
         return;
       }
