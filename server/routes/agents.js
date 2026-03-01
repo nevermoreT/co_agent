@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import db from '../db.js';
 import * as agentRunner from '../services/agentRunner.js';
+import * as soulManager from '../services/soulManager.js';
 
 const router = Router();
 const MAX_AGENTS = 5;
@@ -23,6 +24,19 @@ router.get('/', (req, res) => {
   try {
     const list = db.prepare('SELECT * FROM agents ORDER BY id').all();
     res.json(list);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============ Soul API (Phase 3.2) ============
+// 注意：/soul-templates 必须在 /:id 之前定义
+
+// 获取所有 Soul 模板
+router.get('/soul-templates', (req, res) => {
+  try {
+    const templates = soulManager.getAvailableTemplates();
+    res.json(templates);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -123,6 +137,54 @@ router.delete('/:id', (req, res) => {
     res.status(204).send();
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// 获取 Agent 的 Soul 配置
+router.get('/:id/soul', (req, res) => {
+  try {
+    const soul = soulManager.getAgentSoul(req.params.id);
+    if (soul === null) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+    res.json(soul);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 更新 Agent 的 Soul 配置
+router.put('/:id/soul', (req, res) => {
+  try {
+    soulManager.updateAgentSoul(req.params.id, req.body);
+    const soul = soulManager.getAgentSoul(req.params.id);
+    res.json(soul);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 部分更新 Soul 配置
+router.patch('/:id/soul', (req, res) => {
+  try {
+    const soul = soulManager.mergeSoulConfig(req.params.id, req.body);
+    res.json(soul);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 应用 Soul 模板
+router.post('/:id/soul/apply-template', (req, res) => {
+  try {
+    const { templateName } = req.body;
+    if (!templateName) {
+      return res.status(400).json({ error: 'templateName is required' });
+    }
+    const soul = soulManager.applySoulTemplate(req.params.id, templateName);
+    res.json(soul);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 

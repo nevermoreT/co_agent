@@ -1,6 +1,6 @@
 /**
- * minimal-opencode.js — 使用 spawn 或 node-pty 调用 opencode CLI 并解析流式 NDJSON 输出。
- * 优先使用 node-pty（伪终端）以解除子进程 stdout 缓冲；可被服务端 import 或直接运行。
+ * minimal-opencode.js — 使用原生 spawn 调用 opencode CLI 并解析流式 NDJSON 输出。
+ * 参考 bugfix-windows-shell-special-chars.md，不使用 PTY。
  * 
  * 会话管理参数说明：
  * - --continue / -c: 继续该项目下最近的会话
@@ -15,35 +15,94 @@
  * - 可以通过 `opencode session list` 查看所有会话
  */
 import { spawn } from 'child_process';
-import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__dirname, 'minimal-opencode.js');
 
-let ptySpawn = null;
-try {
-  const require = createRequire(import.meta.url);
-  const pty = require('node-pty');
-  ptySpawn = pty.spawn;
-} catch {
-  // node-pty 未安装或原生模块加载失败时使用普通 spawn
-}
-
-/** 去掉 PTY 输出的 ANSI 转义与 \r，否则整行不是合法 JSON 会解析失败 */
-function stripAnsi(s) {
-  return String(s)
-    .replace(/\r/g, '')
-    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
-    .replace(/\x1b\?[0-9;]*[A-Za-z]/g, '')
-    .replace(/\[\?[0-9;]*[A-Za-z]/g, '')
-    .trim();
+/**
+ * 从文本中提取完整的 JSON 对象
+ * 处理 JSON 中可能包含的换行符和 ANSI 转义序列
+ * 参考 minimal-claude.js 的实现
+ * 
+ * @param {string} text - 输入文本
+ * @returns {{ objects: string[], remaining: string }} - 提取的 JSON 对象数组和剩余文本
+ */
+function extractJsonObjects(text) {
+  const objects = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+  
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    
+    // 跳过 ANSI 转义序列
+    if (c === '\x1b') {
+      let j = i + 1;
+      if (j < text.length && text[j] === '[') {
+        j++;
+        while (j < text.length && /[0-9;]/.test(text[j])) j++;
+        if (j < text.length && /[A-Za-z]/.test(text[j])) j++;
+        i = j - 1;
+        continue;
+      } else if (j < text.length && text[j] === ']') {
+        const endBell = text.indexOf('\x07', j);
+        const endEsc = text.indexOf('\x1b\\', j);
+        if (endBell !== -1 && (endEsc === -1 || endBell < endEsc)) {
+          i = endBell;
+        } else if (endEsc !== -1) {
+          i = endEsc + 1;
+        } else {
+          i = j;
+        }
+        continue;
+      }
+    }
+    
+    // 跳过 \r
+    if (c === '\r') continue;
+    
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    
+    if (c === '\\' && inString) {
+      escape = true;
+      continue;
+    }
+    
+    if (c === '"') {
+      inString = !inString;
+      continue;
+    }
+    
+    if (inString) continue;
+    
+    if (c === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        objects.push({ text: text.substring(start, i + 1), start });
+        start = -1;
+      }
+    }
+  }
+  
+  const lastObj = objects[objects.length - 1];
+  const consumed = lastObj ? lastObj.start + lastObj.text.length : 0;
+  const remaining = text.substring(consumed);
+  
+  return { objects: objects.map(o => o.text), remaining };
 }
 
 /**
- * 解析 opencode NDJSON 行，提取文本内容
+ * 解析单个 JSON 对象
  * opencode 事件类型：
  * - session: 会话信息，包含 session ID（用于保持上下文）
  * - step_start: 步骤开始
@@ -52,10 +111,70 @@ function stripAnsi(s) {
  * - step_finish: 步骤结束
  * - permission_request: 权限请求（需要确认）
  * 
- * @param {string} line - NDJSON 行
- * @param {Function} onOutput - 输出回调 (stream, data)
- * @param {Function} onSession - 会话回调 (sessionId)
+ * @param {string} jsonStr - JSON 字符串
+ * @param {Object} callbacks - 回调函数
+ * @param {Function} [callbacks.onOutput] - 输出回调 (stream, data)
+ * @param {Function} [callbacks.onToolUse] - 工具调用回调
+ * @param {Function} [onSession] - 会话回调 (sessionId)
  */
+function parseJsonObject(jsonStr, callbacks, onSession) {
+  const { onOutput, onToolUse } = callbacks;
+  
+  try {
+    const obj = JSON.parse(jsonStr);
+    
+    // 打印完整的原始 JSON 用于调试
+    console.log('[minimal-opencode] RAW JSON:', JSON.stringify(obj));
+    
+    // 检测 session ID - 支持多种格式
+    let sessionId = null;
+    if (obj.type === 'session') {
+      sessionId = obj.id || obj.session_id;
+    } else if (obj.session_id) {
+      sessionId = obj.session_id;
+    } else if (obj.id && typeof obj.id === 'string' && obj.id.length > 10) {
+      sessionId = obj.id;
+    }
+    if (sessionId) {
+      console.log('[minimal-opencode] detected session:', sessionId);
+      onSession && onSession(sessionId);
+    }
+    
+    // 文本输出
+    if (obj.type === 'text' && obj.part?.text) {
+      onOutput && onOutput('stdout', obj.part.text);
+    } else if (obj.type === 'tool_use') {
+      const toolName = obj.part?.tool || 'tool';
+      const state = obj.part?.state || {};
+      const title = obj.part?.title || state.title || toolName;
+      const status = state.status || 'completed';
+      const input = state.input || {};
+      const output = state.output || '';
+      const callID = obj.part?.callID || '';
+      // 通过专门的 onToolUse 回调发送
+      console.log('[minimal-opencode] tool_use detected:', toolName, title, status);
+      if (onToolUse) {
+        onToolUse({ tool: toolName, title, status, input, output, callID });
+      } else {
+        console.log('[minimal-opencode] WARNING: onToolUse callback not provided!');
+      }
+    } else if (obj.type === 'permission_request') {
+      onOutput && onOutput('stderr', `[权限请求] ${obj.description || JSON.stringify(obj)}\n`);
+    } else if (obj.type === 'step_start' || obj.type === 'step_finish') {
+      // 步骤事件，不需要特殊处理
+    } else if (obj.message) {
+      // 兼容 { message: '...' } 格式
+      if (typeof obj.message === 'string') {
+        onOutput && onOutput('stdout', obj.message);
+      } else if (obj.message.content) {
+        onOutput && onOutput('stdout', obj.message.content);
+      }
+    }
+  } catch (e) {
+    console.log('[minimal-opencode] JSON parse error:', e.message, 'json length:', jsonStr.length);
+  }
+}
+
 /**
  * 获取 opencode 最新的 session ID（通过 opencode session list）
  * @returns {Promise<string|null>} session ID 或 null
@@ -122,76 +241,6 @@ async function getLatestSessionId(cwd) {
   });
 }
 
-function parseNdjsonLine(line, callbacks, onSession) {
-  const { onOutput, onToolUse } = callbacks;
-  const raw = stripAnsi(line);
-  if (!raw) return;
-  
-  try {
-    const obj = JSON.parse(raw);
-    
-    // 打印完整的原始 JSON 用于调试
-    console.log('[minimal-opencode] RAW JSON:', JSON.stringify(obj));
-    
-    // 检测 session ID - 支持多种格式
-    let sessionId = null;
-    if (obj.type === 'session') {
-      sessionId = obj.id || obj.session_id;
-    } else if (obj.session_id) {
-      sessionId = obj.session_id;
-    } else if (obj.id && typeof obj.id === 'string' && obj.id.length > 10) {
-      sessionId = obj.id;
-    }
-    if (sessionId) {
-      console.log('[minimal-opencode] detected session:', sessionId);
-      onSession && onSession(sessionId);
-    }
-    
-    // 文本输出
-    if (obj.type === 'text' && obj.part?.text) {
-      onOutput('stdout', obj.part.text);
-    } else if (obj.type === 'tool_use') {
-      const toolName = obj.part?.tool || 'tool';
-      const state = obj.part?.state || {};
-      const title = state.title || toolName;
-      const status = state.status || 'completed';
-      const output = state.output || '';
-      // 通过专门的 onToolUse 回调发送
-      console.log('[minimal-opencode] tool_use detected:', toolName, status);
-      if (onToolUse) {
-        onToolUse({ tool: toolName, title, status, output });
-      } else {
-        console.log('[minimal-opencode] WARNING: onToolUse callback not provided!');
-      }
-    } else if (obj.type === 'permission_request') {
-      onOutput('stderr', `[权限请求] ${obj.description || JSON.stringify(obj)}\n`);
-    } else if (obj.type === 'step_start' || obj.type === 'step_finish') {
-      // 步骤事件，不需要特殊处理
-    } else if (obj.message) {
-      // 兼容 { message: '...' } 格式
-      if (typeof obj.message === 'string') {
-        onOutput('stdout', obj.message);
-      } else if (obj.message.content) {
-        onOutput('stdout', obj.message.content);
-      }
-    }
-  } catch {
-    if (raw.includes('permission') || raw.includes('confirm') || raw.includes('[Y/n]') || raw.includes('?')) {
-      onOutput('stderr', `[交互提示] ${raw}\n`);
-    } else if (raw.startsWith('{') || raw.startsWith('[')) {
-      // 记录无法解析的 JSON（调试用）
-      console.log('[minimal-opencode] unparseable JSON:', raw.substring(0, 200));
-    }
-  }
-}
-
-function processPtyData(data, stdoutBuf, callbacks, onSession) {
-  const s = stdoutBuf.current + data;
-  const lines = s.split(/\r?\n/);
-  stdoutBuf.current = lines.pop() ?? '';
-  for (const line of lines) parseNdjsonLine(line, callbacks, onSession);
-}
-
 /**
  * 构建会话相关参数
  * @param {Object} options - 会话选项
@@ -223,7 +272,7 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
 
 /**
  * 运行 opencode CLI，解析 NDJSON 并回调 onOutput('stdout'|'stderr', text)。
- * 若已安装 node-pty 则用 PTY 启动以解除缓冲；否则用普通 spawn。
+ * 使用原生 spawn（不使用 PTY），参考 bugfix-windows-shell-special-chars.md。
  * 
  * @param {string} prompt - 用户输入的提示词
  * @param {Object} options - 配置选项
@@ -258,8 +307,6 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
  * ```
  */
 export function runOpencodeCli(prompt, { onOutput, onExit, onSession, onToolUse, continue: shouldContinue = true, sessionId, cwd } = {}) {
-  const isWin = process.platform === 'win32';
-  
   const callbacks = { onOutput, onToolUse };
   
   const sessionConfig = buildSessionArgs({ continue: shouldContinue, sessionId });
@@ -267,15 +314,6 @@ export function runOpencodeCli(prompt, { onOutput, onExit, onSession, onToolUse,
   const wrappedOnSession = (sid) => {
     sessionDetected = true;
     onSession && onSession(sid);
-  };
-  
-  const escapeForShell = (arg) => {
-    if (!arg) return '""';
-    const escaped = arg.replace(/\n/g, ' ').replace(/\r/g, '');
-    if (escaped.includes(' ') || escaped.includes('"') || escaped.includes("'") || escaped.includes('&') || escaped.includes('|')) {
-      return '"' + escaped.replace(/"/g, '""') + '"';
-    }
-    return escaped;
   };
 
   const baseArgs = ['run', ...sessionConfig.args, '--format', 'json'];
@@ -294,90 +332,78 @@ export function runOpencodeCli(prompt, { onOutput, onExit, onSession, onToolUse,
   };
 
   // 打印完整 prompt 用于调试
+  console.log('[minimal-opencode] ========== FULL PROMPT START ==========');
   console.log('[minimal-opencode] FULL PROMPT (%d chars):', prompt?.length || 0);
   console.log(prompt);
+  console.log('[minimal-opencode] ========== FULL PROMPT END ==========');
   console.log('[minimal-opencode] session config:', sessionConfig.logInfo);
 
-  if (ptySpawn) {
-    const file = isWin ? (process.env.COMSPEC || 'cmd.exe') : 'opencode';
-    
-    if (isWin) {
-      const escapedPrompt = escapeForShell(prompt || '');
-      const cmdStr = `opencode run ${sessionConfig.args.join(' ')} --format json ${escapedPrompt}`;
-      console.log('[minimal-opencode] PTY command:', cmdStr);
-      
-      const ptyProcess = ptySpawn(file, ['/c', cmdStr], {
-        name: 'xterm-256color',
-        cols: 8192,
-        rows: 24,
-        cwd: workDir,
-        env: process.env,
-      });
-      const stdoutBuf = { current: '' };
-      ptyProcess.on('data', (data) => {
-        processPtyData(data, stdoutBuf, callbacks, wrappedOnSession);
-      });
-      ptyProcess.on('exit', (code, signal) => {
-        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, callbacks, wrappedOnSession);
-        handleExit(code, signal);
-      });
-      console.log('[minimal-opencode] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
-      return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
-    } else {
-      const fullArgs = [...baseArgs, prompt || ''];
-      console.log('[minimal-opencode] PTY command: opencode', fullArgs.join(' '));
-      
-      const ptyProcess = ptySpawn('opencode', fullArgs, {
-        name: 'xterm-256color',
-        cols: 8192,
-        rows: 24,
-        cwd: workDir,
-        env: process.env,
-      });
-      const stdoutBuf = { current: '' };
-      ptyProcess.on('data', (data) => {
-        processPtyData(data, stdoutBuf, callbacks, wrappedOnSession);
-      });
-      ptyProcess.on('exit', (code, signal) => {
-        if (stdoutBuf.current.trim()) parseNdjsonLine(stdoutBuf.current, callbacks, wrappedOnSession);
-        handleExit(code, signal);
-      });
-      console.log('[minimal-opencode] PTY spawned, pid:', ptyProcess.pid, sessionConfig.logInfo);
-      return { child: { pid: ptyProcess.pid, kill: (sig) => ptyProcess.kill(sig) } };
-    }
-  }
-
-  const cmdStr = `opencode ${baseArgs.join(' ')} "${(prompt || '').replace(/"/g, '\\"')}"`;
-  console.log('[minimal-opencode] spawn command:', cmdStr);
+  // Windows 上需要 shell: true 来调用 .cmd 文件
+  // 转义 prompt 中的双引号（Windows cmd.exe 使用 "" 转义）
+  // 将换行符替换为空格，避免 cmd.exe 解析问题
+  // 注意：只对 prompt 加引号，选项不加引号
+  const escapedPrompt = (prompt || '').replace(/"/g, '""').replace(/\n/g, ' ').replace(/\r/g, '');
+  const cmdStr = `opencode ${baseArgs.join(' ')} "${escapedPrompt}"`;
   
-  const child = isWin
-    ? spawn(cmdStr, [], { stdio: ['pipe', 'pipe', 'pipe'], shell: true, cwd: workDir })
-    : spawn('opencode', [...baseArgs, prompt || ''], { stdio: ['pipe', 'pipe', 'pipe'], cwd: workDir });
-  child.stdin.end();
+  // 打印完整命令（不截断）
+  console.log('[minimal-opencode] ========== SPAWN COMMAND START ==========');
+  console.log('[minimal-opencode] command length: %d chars', cmdStr.length);
+  console.log('[minimal-opencode] command:\n%s', cmdStr);
+  console.log('[minimal-opencode] ========== SPAWN COMMAND END ==========');
+  console.log('[minimal-opencode] Working directory:', workDir);
+
+  const child = spawn(cmdStr, [], {
+    stdio: ['inherit', 'pipe', 'pipe'],
+    cwd: workDir,
+    shell: true,
+  });
 
   let stdoutBuf = '';
+  let chunkNum = 0;
+  
   child.stdout.on('data', (chunk) => {
-    const s = stdoutBuf + chunk.toString();
-    const lines = s.split(/\r?\n/);
-    stdoutBuf = lines.pop() ?? '';
-    for (const line of lines) parseNdjsonLine(line, callbacks, wrappedOnSession);
+    const data = chunk.toString();
+    const s = stdoutBuf + data;
+    const { objects, remaining } = extractJsonObjects(s);
+    
+    console.log('[minimal-opencode] chunk %d: %d chars, %d JSON objects, buffer %d chars',
+      chunkNum++, data.length, objects.length, remaining.length);
+    
+    for (const obj of objects) {
+      parseJsonObject(obj, callbacks, wrappedOnSession);
+    }
+    stdoutBuf = remaining;
   });
+  
   child.stdout.on('end', () => {
-    if (stdoutBuf) parseNdjsonLine(stdoutBuf, callbacks, wrappedOnSession);
+    if (stdoutBuf.trim()) {
+      const { objects } = extractJsonObjects(stdoutBuf);
+      console.log('[minimal-opencode] stdout end: %d remaining JSON objects', objects.length);
+      for (const obj of objects) {
+        parseJsonObject(obj, callbacks, wrappedOnSession);
+      }
+    }
   });
-  child.stderr.on('data', (chunk) => onOutput('stderr', chunk.toString()));
+  
+  child.stderr.on('data', (chunk) => {
+    onOutput && onOutput('stderr', chunk.toString());
+  });
+  
   child.on('error', (err) => {
     if (err.code === 'ENOENT') {
-      onOutput('stderr', '未找到 opencode CLI。请先安装并确保 "opencode" 已加入系统 PATH。\n');
+      onOutput && onOutput('stderr', '未找到 opencode CLI。请先安装并确保 "opencode" 已加入系统 PATH。\n');
     } else {
-      onOutput('stderr', err.message + '\n');
+      onOutput && onOutput('stderr', err.message + '\n');
     }
     handleExit(-1, err.message);
   });
+  
   child.on('exit', (code, signal) => {
+    console.log('[minimal-opencode] child exit: code=%s signal=%s', code, signal);
     handleExit(code, signal);
   });
-  console.log('[minimal-opencode] spawn (no PTY) pid:', child.pid, sessionConfig.logInfo);
+  
+  console.log('[minimal-opencode] spawn pid:', child.pid, sessionConfig.logInfo);
   return { child };
 }
 

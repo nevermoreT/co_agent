@@ -43,15 +43,19 @@ function stripAnsi(s) {
 /**
  * 解析 Claude CLI NDJSON 行，提取文本内容
  * Claude CLI 事件类型：
- * - assistant: 助手回复，message.content 包含内容块
+ * - assistant: 助手回复，message.content 包含内容块（text 或 tool_use）
+ * - user: 用户消息，可能包含 tool_result
  * - system: 系统消息，可能包含 session ID
  * - result: 最终结果
  * 
  * @param {string} line - NDJSON 行
- * @param {Function} onOutput - 输出回调 (stream, data)
- * @param {Function} onSession - 会话回调 (sessionId)
+ * @param {Object} callbacks - 回调函数
+ * @param {Function} callbacks.onOutput - 输出回调 (stream, data)
+ * @param {Function} [callbacks.onToolUse] - 工具调用回调
+ * @param {Function} [onSession] - 会话回调 (sessionId)
  */
-function parseNdjsonLine(line, onOutput, onSession) {
+function parseNdjsonLine(line, callbacks, onSession) {
+  const { onOutput, onToolUse } = callbacks;
   const raw = stripAnsi(line);
   if (!raw) return;
   try {
@@ -68,10 +72,65 @@ function parseNdjsonLine(line, onOutput, onSession) {
       onSession && onSession(obj.session_id);
     }
 
+    // 处理 assistant 消息（可能包含 text 或 tool_use）
     if (obj.type === 'assistant' && obj.message?.content) {
       for (const block of obj.message.content) {
         if (block.type === 'text' && block.text) {
-          onOutput('stdout', block.text);
+          onOutput && onOutput('stdout', block.text);
+        } else if (block.type === 'tool_use') {
+          // Claude 的 tool_use 格式
+          const toolName = block.name || 'tool';
+          const toolId = block.id || '';
+          const input = block.input || {};
+          
+          // 从 input 中提取 title/description
+          let title = input.description || input.command || toolName;
+          if (typeof title === 'object') {
+            title = JSON.stringify(title);
+          }
+          
+          console.log('[minimal-claude] tool_use detected:', toolName, title);
+          
+          // 先发送 tool_use 开始状态
+          if (onToolUse) {
+            onToolUse({
+              tool: toolName.toLowerCase(),
+              title: String(title).substring(0, 100),
+              status: 'running',
+              input,
+              output: '',
+              callID: toolId
+            });
+          }
+        }
+      }
+    }
+    
+    // 处理 user 消息中的 tool_result
+    if (obj.type === 'user' && obj.message?.content) {
+      for (const block of obj.message.content) {
+        if (block.type === 'tool_result') {
+          const toolId = block.tool_use_id || '';
+          const output = block.content || '';
+          const isError = block.is_error || false;
+          
+          // 也可以从 tool_use_result 中获取更详细的输出
+          const stdout = obj.tool_use_result?.stdout || '';
+          const stderrOutput = obj.tool_use_result?.stderr || '';
+          const finalOutput = stdout || stderrOutput || output;
+          
+          console.log('[minimal-claude] tool_result detected:', toolId, 'error:', isError);
+          
+          if (onToolUse) {
+            onToolUse({
+              tool: '', // tool_result 不知道 tool 名称，需要匹配之前的
+              title: '',
+              status: isError ? 'error' : 'completed',
+              input: {},
+              output: finalOutput,
+              callID: toolId
+            });
+          }
         }
       }
     }
@@ -150,20 +209,6 @@ function extractJsonObjects(text) {
   return { objects: objects.map(o => o.text), remaining };
 }
 
-function _processPtyData(data, stdoutBuf, onOutput, onSession, chunkNum) {
-  const s = stdoutBuf.current + data;
-  const { objects, remaining } = extractJsonObjects(s);
-  
-  for (const obj of objects) {
-    parseNdjsonLine(obj, onOutput, onSession);
-  }
-  
-  stdoutBuf.current = remaining;
-  console.log('[minimal-claude] chunk %d: %d chars, %d JSON objects, buffer %d chars', 
-    chunkNum.val, data.length, objects.length, remaining.length);
-  chunkNum.val++;
-}
-
 /**
  * 构建会话相关参数
  * @param {Object} options - 会话选项
@@ -238,7 +283,7 @@ function buildSessionArgs({ continue: shouldContinue, sessionId }) {
  * runClaudeCli('hello', { systemPromptFile: '/tmp/system.txt' });
  * ```
  */
-export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: shouldContinue = true, sessionId, cwd, systemPrompt, systemPromptFile } = {}) {
+export function runClaudeCli(prompt, { onOutput, onExit, onSession, onToolUse, continue: shouldContinue = true, sessionId, cwd, systemPrompt, systemPromptFile } = {}) {
   const _isWin = process.platform === 'win32';
 
   const sessionConfig = buildSessionArgs({ continue: shouldContinue, sessionId });
@@ -273,14 +318,21 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
   const workDir = cwd || process.cwd();
 
   // 打印完整 prompt 用于调试
+  console.log('[minimal-claude] ========== FULL PROMPT START ==========');
   console.log('[minimal-claude] FULL PROMPT (%d chars):', prompt?.length || 0);
   console.log(prompt);
+  console.log('[minimal-claude] ========== FULL PROMPT END ==========');
 
   // Windows 上需要 shell: true 来调用 .cmd 文件，但需要正确转义参数
   const escapedPrompt = (prompt || '').replace(/"/g, '""');
   const cmdArgs = [...args, '-p', escapedPrompt];
   const cmdStr = `claude ${cmdArgs.map(a => `"${a}"`).join(' ')}`;
-  console.log('[minimal-claude] spawn command (truncated for display):', cmdStr.substring(0, 300) + '...');
+  
+  // 打印完整命令（不截断）
+  console.log('[minimal-claude] ========== SPAWN COMMAND START ==========');
+  console.log('[minimal-claude] command length: %d chars', cmdStr.length);
+  console.log('[minimal-claude] command:\n%s', cmdStr);
+  console.log('[minimal-claude] ========== SPAWN COMMAND END ==========');
   console.log('[minimal-claude] Working directory:', workDir);
 
   const child = spawn(cmdStr, [], {
@@ -291,6 +343,8 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
 
   let stdoutBuf = '';
   let chunkNum = 0;
+  const callbacks = { onOutput, onToolUse };
+  
   child.stdout.on('data', (chunk) => {
     const data = chunk.toString();
     const s = stdoutBuf + data;
@@ -298,17 +352,17 @@ export function runClaudeCli(prompt, { onOutput, onExit, onSession, continue: sh
     console.log('[minimal-claude] chunk %d: %d chars, %d JSON objects, buffer %d chars',
       chunkNum++, data.length, objects.length, remaining.length);
     for (const obj of objects) {
-      parseNdjsonLine(obj, onOutput, onSession);
+      parseNdjsonLine(obj, callbacks, onSession);
     }
     stdoutBuf = remaining;
   });
   child.stdout.on('end', () => {
     if (stdoutBuf.trim()) {
       const { objects } = extractJsonObjects(stdoutBuf);
-      for (const obj of objects) parseNdjsonLine(obj, onOutput, onSession);
+      for (const obj of objects) parseNdjsonLine(obj, callbacks, onSession);
     }
   });
-  child.stderr.on('data', (chunk) => onOutput('stderr', chunk.toString()));
+  child.stderr.on('data', (chunk) => onOutput && onOutput('stderr', chunk.toString()));
   child.on('error', (err) => {
     if (err.code === 'ENOENT') {
       onOutput('stderr', '未找到 Claude CLI。请先安装并确保 "claude" 已加入系统 PATH。\n');

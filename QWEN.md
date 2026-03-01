@@ -49,7 +49,7 @@ co_agent/
 │   │   ├── useTasks.js          # 任务数据获取
 │   │   ├── useWs.js             # WebSocket 连接管理
 │   │   ├── useGlobalMessages.js # 全局消息获取（按对话过滤）
-│   │   └── useMessages.js       # 遡留：单 Agent 消息获取
+│   │   └── useMessages.js       # 遗留：单 Agent 消息获取
 │   ├── utils/
 │   │   └── logger.js            # 时间戳日志工具
 │   ├── App.jsx                  # 主应用组件（三栏布局）
@@ -236,7 +236,7 @@ CREATE TABLE agent_sessions (
 | DELETE | `/api/tasks/:id` | 删除任务 |
 | GET | `/api/messages?conversation_id=X` | 获取对话消息 |
 | POST | `/api/messages` | 发送消息 |
-| GET | `/api/agents/:id/messages` | 获取单 Agent 消息（遗贸） |
+| GET | `/api/agents/:id/messages` | 获取单 Agent 消息（遗留） |
 | GET | `/api/sessions` | 获取会话列表 |
 | POST | `/api/sessions` | 创建/更新会话 |
 | GET | `/api/memory` | 获取记忆事件 |
@@ -253,7 +253,7 @@ CREATE TABLE agent_sessions (
 |------|------|------|
 | `start` | `{ agentId }` | 启动 Agent 进程 |
 | `send` | `{ agentId, text, conversationId }` | 发送文本到 Agent |
-| `stop` | `{ agentId }` | 偲止 Agent 进程 |
+| `stop` | `{ agentId }` | 停止 Agent 进程 |
 | `status` | - | 请求状态 |
 
 ### 服务端响应

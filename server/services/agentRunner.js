@@ -169,7 +169,7 @@ export function run(agentId, onOutput, onExit) {
  * - 使用 sessionManager 管理每个 agent 在每个对话中的 session
  * - 使用 memoryManager 提供记忆上下文（Layer 3）
  */
-export async function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId) {
+export async function runClaudeCli(agentId, prompt, onOutput, onExit, conversationId, onToolUse) {
   const key = String(agentId);
   if (runs.has(key)) {
     logger.log('[agentRunner] runClaudeCli() blocked: agentId=%s already running', agentId);
@@ -184,7 +184,13 @@ export async function runClaudeCli(agentId, prompt, onOutput, onExit, conversati
 
   // Phase 3.1: 构建 System Prompt (Layer 1: Agent 角色)
   const systemPrompt = buildSystemPrompt(agentId, conversationId);
-  logger.log('[agentRunner] runClaudeCli() systemPrompt: %d chars', systemPrompt.length);
+  
+  // 打印完整 system prompt 用于调试
+  logger.log('[agentRunner] ========== SYSTEM PROMPT START ==========');
+  logger.log('[agentRunner] runClaudeCli() agentId=%d agentName=%s systemPrompt (%d chars):',
+    agentId, agent.name, systemPrompt.length);
+  logger.log('[agentRunner] systemPrompt content:\n%s', systemPrompt);
+  logger.log('[agentRunner] ========== SYSTEM PROMPT END ==========');
   
   // 决定使用文件还是直接传参
   let systemPromptFile = null;
@@ -212,11 +218,17 @@ export async function runClaudeCli(agentId, prompt, onOutput, onExit, conversati
   }
 
   const sessionId = sessionManager.getSession(agentId, conversationId);
+  
+  // 打印完整 prompt 用于调试
+  logger.log('[agentRunner] ========== FULL PROMPT START ==========');
   logger.log('[agentRunner] runClaudeCli() agentId=%d convId=%d promptLen=%d sessionId=%s',
     agentId, conversationId, enrichedPrompt.length, sessionId || '(new)');
+  logger.log('[agentRunner] prompt content:\n%s', enrichedPrompt);
+  logger.log('[agentRunner] ========== FULL PROMPT END ==========');
 
   const { child } = runClaudeCliImpl(enrichedPrompt, {
     onOutput,
+    onToolUse,
     onExit: (code, signal) => {
       logger.log('[agentRunner] runClaudeCli() exit: agentId=%s code=%s signal=%s', agentId, code, signal);
       // 清理临时文件
@@ -259,22 +271,32 @@ export function runOpencodeCli(agentId, prompt, onOutput, onExit, conversationId
   
   // Phase 3.1: 构建 Opencode 前缀（角色信息）
   const rolePrefix = buildOpencodePrefix(agentId);
-  logger.log('[agentRunner] runOpencodeCli() rolePrefix: %s', rolePrefix);
+  logger.log('[agentRunner] runOpencodeCli() rolePrefix length: %d', rolePrefix.length);
+  logger.log('[agentRunner] runOpencodeCli() rolePrefix content:\n%s', rolePrefix);
   
   // Layer 3: 记忆上下文
   const memoryContext = memoryManager.buildAgentContext(agentId, conversationId);
+  logger.log('[agentRunner] runOpencodeCli() memoryContext length: %d', memoryContext?.length || 0);
   
-  // Layer 4: 用户输入 + 前缀
+  // Layer 4: 用户输入 + 前缀 + 上下文
+  // 使用 [CONVERSATION_CONTEXT] 而不是 <conversation_context>（避免 Windows 重定向问题）
+  // 将换行符替换为空格
   let enrichedPrompt;
   if (memoryContext) {
-    enrichedPrompt = `${rolePrefix}${prompt} - 上下文: ${memoryContext}`;
+    const oneLineContext = memoryContext.replace(/\n/g, ' ').replace(/\r/g, '');
+    enrichedPrompt = `${rolePrefix}${prompt} [CONVERSATION_CONTEXT] ${oneLineContext} [/CONVERSATION_CONTEXT]`;
   } else {
     enrichedPrompt = `${rolePrefix}${prompt}`;
   }
 
   const sessionId = sessionManager.getSession(agentId, conversationId);
-  logger.log('[agentRunner] runOpencodeCli() agentId=%d convId=%d promptLen=%d sessionId=%s',
-    agentId, conversationId, enrichedPrompt.length, sessionId || '(new)');
+  
+  // 打印完整 prompt 用于调试
+  logger.log('[agentRunner] ========== FULL PROMPT START ==========');
+  logger.log('[agentRunner] agentId=%d agentName=%s convId=%d promptLen=%d sessionId=%s',
+    agentId, agent.name, conversationId, enrichedPrompt.length, sessionId || '(new)');
+  logger.log('[agentRunner] prompt content:\n%s', enrichedPrompt);
+  logger.log('[agentRunner] ========== FULL PROMPT END ==========');
 
   const { child } = runOpencodeCliImpl(enrichedPrompt, {
     onOutput,

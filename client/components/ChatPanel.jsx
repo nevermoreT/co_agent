@@ -20,7 +20,30 @@ const ChatMessage = memo(function ChatMessage({ m }) {
     );
   }
 
-  const { toolCalls, textParts } = parseMessageContent(m.content);
+  // 优先从 metadata 读取 tool_calls，否则解析 content
+  let toolCalls = [];
+  let textParts;
+  
+  if (m.metadata) {
+    try {
+      const meta = typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata;
+      if (meta.tool_calls && Array.isArray(meta.tool_calls)) {
+        toolCalls = meta.tool_calls;
+      }
+    } catch {
+      // metadata 解析失败，回退到 content 解析
+    }
+  }
+  
+  // 如果 metadata 没有 tool_calls，尝试从 content 解析
+  if (toolCalls.length === 0) {
+    const parsed = parseMessageContent(m.content);
+    toolCalls = parsed.toolCalls;
+    textParts = parsed.textParts;
+  } else {
+    // 有 tool_calls 时，textParts 直接从 content 提取（不包含 tool_use 标记）
+    textParts = m.content ? [m.content] : [];
+  }
 
   // 工具调用消息
   if (toolCalls.length > 0) {

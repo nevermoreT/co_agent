@@ -11,15 +11,29 @@ function SoulConfigPanel({ agent, onSave, onClose }) {
     // 加载模板列表
     fetch('/api/agents/soul-templates')
       .then(res => res.json())
-      .then(data => setTemplates(data))
-      .catch(err => console.error('Failed to load templates:', err));
+      .then(data => {
+        // 确保是数组
+        if (Array.isArray(data)) {
+          setTemplates(data);
+        } else {
+          console.error('Templates API returned non-array:', data);
+          setTemplates([]);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load templates:', err);
+        setTemplates([]);
+      });
 
     // 加载当前 Agent 的 Soul 配置
     if (agent?.id) {
       fetch(`/api/agents/${agent.id}/soul`)
         .then(res => res.json())
         .then(data => setSoul(data || {}))
-        .catch(err => console.error('Failed to load soul:', err));
+        .catch(err => {
+          console.error('Failed to load soul:', err);
+          setSoul({});
+        });
     }
   }, [agent]);
 

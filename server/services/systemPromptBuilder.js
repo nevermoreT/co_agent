@@ -86,24 +86,19 @@ export function buildOpencodePrefix(agentId) {
   if (soul && Object.keys(soul).length > 0) {
     const agentWithSoul = { ...agent, soul };
     const soulPrompt = buildSoulSystemPrompt(agentWithSoul);
+    // 将换行符替换为空格，避免 Windows cmd.exe 解析问题
+    // 使用 [SYSTEM_CONTEXT] 而不是 <system_context>（避免 < > 被解释为重定向）
+    const oneLinePrompt = soulPrompt.replace(/\n/g, ' ').replace(/\r/g, '');
     logger.log('[systemPromptBuilder] buildOpencodePrefix: using soul prompt (%d chars)', soulPrompt.length);
-    // 将系统提示词作为前缀，用 XML 标签包裹
-    return `<system_context>
-${soulPrompt}
-</system_context>
-
-用户消息：`;
+    return `[SYSTEM_CONTEXT] ${oneLinePrompt} [/SYSTEM_CONTEXT] 用户消息：`;
   }
 
   // 否则使用基础系统提示词
   const basicPrompt = buildBasicSystemPrompt(agent);
   logger.log('[systemPromptBuilder] buildOpencodePrefix: using basic prompt (%d chars)', basicPrompt.length);
   if (basicPrompt) {
-    return `<system_context>
-${basicPrompt}
-</system_context>
-
-用户消息：`;
+    const oneLinePrompt = basicPrompt.replace(/\n/g, ' ').replace(/\r/g, '');
+    return `[SYSTEM_CONTEXT] ${oneLinePrompt} [/SYSTEM_CONTEXT] 用户消息：`;
   }
 
   // 最简单的前缀
@@ -133,7 +128,38 @@ export function buildBasicSystemPrompt(agent) {
     parts.push(``, `自定义指令：${agent.system_prompt}`);
   }
   
-  parts.push(``, `协作上下文：你正在参与一个多 Agent 协作对话。请基于你的专业领域提供回答。`);
+  // 添加团队介绍
+  const teamIntro = buildTeamIntroduction(agent.id);
+  if (teamIntro) {
+    parts.push(teamIntro);
+  } else {
+    parts.push(``, `协作上下文：你正在参与一个多 Agent 协作对话。请基于你的专业领域提供回答。`);
+  }
   
   return parts.join('\n');
+}
+
+/**
+ * 构建团队介绍 - 让 Agent 知道团队中有哪些其他成员
+ */
+function buildTeamIntroduction(currentAgentId) {
+  const agents = db.prepare('SELECT id, name, role FROM agents WHERE id != ?').all(currentAgentId);
+  
+  if (!agents || agents.length === 0) {
+    return '';
+  }
+
+  const memberList = agents.map(a => `- ${a.name}（${a.role || '通用助手'}）`).join('\n');
+  
+  return `## 协作团队
+
+你正在参与一个多 Agent 协作对话。当用户使用 @Agent名称 格式时，消息会发送给对应的 Agent。
+
+团队其他成员：
+${memberList}
+
+协作规则：
+- 用户消息可能包含 @其他Agent，表示该消息是发给那个 Agent 的
+- 你应该专注于自己的专业领域
+- 如果问题超出你的范围，可以建议用户咨询其他 Agent`;
 }

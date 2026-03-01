@@ -59,8 +59,15 @@ export function useWs(options = {}) {
           callbacksRef.current.onOutput?.(msg.agentId, msg.stream, msg.data);
         }
         if (msg.type === 'tool_use' && msg.agentId != null) {
-          logger.log('[useWs] tool_use event for agentId:', msg.agentId, 'tool:', msg.tool, 'status:', msg.status);
-          callbacksRef.current.onToolUse?.(msg.agentId, { tool: msg.tool, title: msg.title, status: msg.status, output: msg.output });
+          logger.log('[useWs] tool_use event for agentId:', msg.agentId, 'tool:', msg.tool, 'title:', msg.title);
+          callbacksRef.current.onToolUse?.(msg.agentId, { 
+            tool: msg.tool, 
+            title: msg.title, 
+            status: msg.status, 
+            input: msg.input,
+            output: msg.output,
+            callID: msg.callID
+          });
         }
         if (msg.type === 'error') {
           logger.log('[useWs] error event:', msg.message);

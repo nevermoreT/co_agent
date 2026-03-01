@@ -269,3 +269,8 @@ Responses: `{ type: 'output'|'exit'|'error'|'started'|'stopped'|'status', ... }`
 1. Run `npm run lint` and fix any issues
 2. Run `npm run test:run` and ensure all tests pass
 3. Run `npm run build` to verify production build works
+
+
+## 文档入口
+
+- `docs/README.md`
