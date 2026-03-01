@@ -68,71 +68,106 @@ export default function App() {
 
   const { ready, runningAgentIds, lastError, clearError, sendStart, sendStop, sendText } = useWs({
     onOutput(agentId, stream, data, msgConversationId) {
-      // 使用消息中的 conversationId，否则使用当前选中的 conversationId
-      const targetConversationId = msgConversationId != null ? msgConversationId : selectedConversationId;
-      
-      // 过滤非当前对话的消息（如果消息指定了 conversationId）
-      if (msgConversationId != null && msgConversationId !== selectedConversationId) {
-        logger.log('[App] onOutput: ignoring message for different conversation: %s vs current %s', 
-          msgConversationId, selectedConversationId);
-        return;
-      }
-      
-      const str = typeof data === 'string' ? data : String(data ?? '');
-      
-      // 更新对应会话的流式输出状态
-      setStreamingByConversation((prev) => {
-        const prevConv = prev[targetConversationId] || {};
-        const prevContent = prevConv[agentId] || '';
-        return {
+      // 如果消息带有 conversationId，说明这是特定会话的消息
+      if (msgConversationId != null) {
+        // 即使用户已切换到其他会话，仍应将此消息存储到正确的会话中
+        // 这样当用户切换回该会话时，可以看到完整的输出
+        
+        const str = typeof data === 'string' ? data : String(data ?? '');
+        
+        // 更新对应会话的流式输出状态
+        setStreamingByConversation((prev) => {
+          const prevConv = prev[msgConversationId] || {};
+          const prevContent = prevConv[agentId] || '';
+          return {
+            ...prev,
+            [msgConversationId]: {
+              ...prevConv,
+              [agentId]: prevContent + str,
+            },
+          };
+        });
+        
+        // 更新 ref
+        if (!streamingRefByConversation.current[msgConversationId]) {
+          streamingRefByConversation.current[msgConversationId] = {};
+        }
+        streamingRefByConversation.current[msgConversationId][agentId] = 
+          (streamingRefByConversation.current[msgConversationId][agentId] || '') + str;
+        
+        // 如果这是当前选中的会话，则更新活跃 Agent
+        if (msgConversationId === selectedConversationId) {
+          setStreamingAgentIdByConversation((prev) => ({
+            ...prev,
+            [selectedConversationId]: agentId,
+          }));
+        }
+      } else {
+        // 没有 conversationId 的旧消息，按以前的方式处理（只更新当前会话）
+        const str = typeof data === 'string' ? data : String(data ?? '');
+        
+        setStreamingByConversation((prev) => {
+          const prevConv = prev[selectedConversationId] || {};
+          const prevContent = prevConv[agentId] || '';
+          return {
+            ...prev,
+            [selectedConversationId]: {
+              ...prevConv,
+              [agentId]: prevContent + str,
+            },
+          };
+        });
+        
+        if (!streamingRefByConversation.current[selectedConversationId]) {
+          streamingRefByConversation.current[selectedConversationId] = {};
+        }
+        streamingRefByConversation.current[selectedConversationId][agentId] = 
+          (streamingRefByConversation.current[selectedConversationId][agentId] || '') + str;
+        
+        setStreamingAgentIdByConversation((prev) => ({
           ...prev,
-          [targetConversationId]: {
-            ...prevConv,
-            [agentId]: prevContent + str,
-          },
-        };
-      });
-      
-      // 更新 ref
-      if (!streamingRefByConversation.current[targetConversationId]) {
-        streamingRefByConversation.current[targetConversationId] = {};
+          [selectedConversationId]: agentId,
+        }));
       }
-      streamingRefByConversation.current[targetConversationId][agentId] = 
-        (streamingRefByConversation.current[targetConversationId][agentId] || '') + str;
-      
-      // 更新当前会话的活跃 Agent
-      setStreamingAgentIdByConversation((prev) => ({
-        ...prev,
-        [selectedConversationId]: agentId, // 注意：这里是当前选中的会话
-      }));
     },
     onToolUse(agentId, toolData, msgConversationId) {
-      const targetConversationId = msgConversationId != null ? msgConversationId : selectedConversationId;
-      
-      // 过滤非当前对话的消息
-      if (msgConversationId != null && msgConversationId !== selectedConversationId) {
-        logger.log('[App] onToolUse: ignoring message for different conversation: %s vs current %s', 
-          msgConversationId, selectedConversationId);
-        return;
-      }
-      
-      logger.log('[App] onToolUse: agentId=%s tool=%s status=%s', agentId, toolData.tool, toolData.status);
-      
-      setStreamingToolCallsByConversation((prev) => {
-        const prevConv = prev[targetConversationId] || {};
-        return {
+      if (msgConversationId != null) {
+        setStreamingToolCallsByConversation((prev) => {
+          const prevConv = prev[msgConversationId] || {};
+          return {
+            ...prev,
+            [msgConversationId]: {
+              ...prevConv,
+              [agentId]: [...(prevConv[agentId] || []), toolData],
+            },
+          };
+        });
+        
+        // 如果这是当前选中的会话，则更新活跃 Agent
+        if (msgConversationId === selectedConversationId) {
+          setStreamingAgentIdByConversation((prev) => ({
+            ...prev,
+            [selectedConversationId]: agentId,
+          }));
+        }
+      } else {
+        // 没有 conversationId 的旧消息，按以前的方式处理
+        setStreamingToolCallsByConversation((prev) => {
+          const prevConv = prev[selectedConversationId] || {};
+          return {
+            ...prev,
+            [selectedConversationId]: {
+              ...prevConv,
+              [agentId]: [...(prevConv[agentId] || []), toolData],
+            },
+          };
+        });
+        
+        setStreamingAgentIdByConversation((prev) => ({
           ...prev,
-          [targetConversationId]: {
-            ...prevConv,
-            [agentId]: [...(prevConv[agentId] || []), toolData],
-          },
-        };
-      });
-      
-      setStreamingAgentIdByConversation((prev) => ({
-        ...prev,
-        [selectedConversationId]: agentId, // 注意：这里是当前选中的会话
-      }));
+          [selectedConversationId]: agentId,
+        }));
+      }
     },
     onExit(agentId, code, signal, msgConversationId) {
       // 获取消息所属的会话 ID（如果存在）
