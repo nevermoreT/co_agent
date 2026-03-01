@@ -11,6 +11,8 @@ import chatsRouter from './routes/chats.js';
 import statsRouter from './routes/stats.js';
 import sessionsRouter from './routes/sessions.js';
 import memoryRouter from './routes/memory.js';
+import a2aRouter from './routes/a2a.js';
+import a2aTasksRouter from './routes/a2a-tasks.js';
 import logger from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,6 +29,8 @@ app.use('/api', chatsRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/memory', memoryRouter);
+app.use('/', a2aRouter);  // Agent Card endpoint
+app.use('/a2a', a2aTasksRouter);  // A2A task endpoints
 
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
