@@ -13,10 +13,33 @@ const DEFAULT_CONVERSATION_TITLE = '创世碎碎念';
 
 export default function App() {
   const [selectedConversationId, setSelectedConversationId] = useState(null);
-  const [streaming, setStreaming] = useState({});
-  const [streamingAgentId, setStreamingAgentId] = useState(null);
-  const [streamingToolCalls, setStreamingToolCalls] = useState({});
-  const streamingRef = useRef({});
+  // 流式输出状态按 conversationId 隔离存储
+  const [streamingByConversation, setStreamingByConversation] = useState({});
+  const [streamingAgentIdByConversation, setStreamingAgentIdByConversation] = useState({});
+  const [streamingToolCallsByConversation, setStreamingToolCallsByConversation] = useState({});
+  const streamingRefByConversation = useRef({});
+
+  // 获取当前会话的流式输出状态
+  const streaming = useMemo(() => {
+    return streamingByConversation[selectedConversationId] || {};
+  }, [streamingByConversation, selectedConversationId]);
+
+  const streamingAgentId = useMemo(() => {
+    return streamingAgentIdByConversation[selectedConversationId] || null;
+  }, [streamingAgentIdByConversation, selectedConversationId]);
+
+  const streamingToolCalls = useMemo(() => {
+    return streamingToolCallsByConversation[selectedConversationId] || {};
+  }, [streamingToolCallsByConversation, selectedConversationId]);
+
+  const streamingRef = useMemo(() => {
+    if (!streamingRefByConversation.current[selectedConversationId]) {
+      streamingRefByConversation.current[selectedConversationId] = {};
+    }
+    return {
+      current: streamingRefByConversation.current[selectedConversationId],
+    };
+  }, [selectedConversationId]);
 
   const { agents, refetch: refetchAgents } = useAgents();
   const { tasks, loading: tasksLoading, refetch: refetchTasks } = useTasks();
@@ -45,7 +68,10 @@ export default function App() {
 
   const { ready, runningAgentIds, lastError, clearError, sendStart, sendStop, sendText } = useWs({
     onOutput(agentId, stream, data, msgConversationId) {
-      // 过滤非当前对话的消息
+      // 使用消息中的 conversationId 或当前选中的 conversationId
+      const targetConversationId = msgConversationId || selectedConversationId;
+      
+      // 过滤非当前对话的消息（如果消息指定了 conversationId）
       if (msgConversationId != null && msgConversationId !== selectedConversationId) {
         logger.log('[App] onOutput: ignoring message for different conversation: %s vs current %s', 
           msgConversationId, selectedConversationId);
@@ -53,14 +79,36 @@ export default function App() {
       }
       
       const str = typeof data === 'string' ? data : String(data ?? '');
-      const prev = streamingRef.current[agentId] || '';
-      const nextContent = prev + str;
-      streamingRef.current[agentId] = nextContent;
-      // 直接更新状态，服务端已有 80ms 节流
-      setStreaming((s) => ({ ...s, [agentId]: nextContent }));
-      setStreamingAgentId(agentId);
+      
+      // 更新对应会话的流式输出状态
+      setStreamingByConversation((prev) => {
+        const prevConv = prev[targetConversationId] || {};
+        const prevContent = prevConv[agentId] || '';
+        return {
+          ...prev,
+          [targetConversationId]: {
+            ...prevConv,
+            [agentId]: prevContent + str,
+          },
+        };
+      });
+      
+      // 更新 ref
+      if (!streamingRefByConversation.current[targetConversationId]) {
+        streamingRefByConversation.current[targetConversationId] = {};
+      }
+      streamingRefByConversation.current[targetConversationId][agentId] = 
+        (streamingRefByConversation.current[targetConversationId][agentId] || '') + str;
+      
+      // 更新当前会话的活跃 Agent
+      setStreamingAgentIdByConversation((prev) => ({
+        ...prev,
+        [targetConversationId]: agentId,
+      }));
     },
     onToolUse(agentId, toolData, msgConversationId) {
+      const targetConversationId = msgConversationId || selectedConversationId;
+      
       // 过滤非当前对话的消息
       if (msgConversationId != null && msgConversationId !== selectedConversationId) {
         logger.log('[App] onToolUse: ignoring message for different conversation: %s vs current %s', 
@@ -69,45 +117,43 @@ export default function App() {
       }
       
       logger.log('[App] onToolUse: agentId=%s tool=%s status=%s', agentId, toolData.tool, toolData.status);
-      setStreamingToolCalls((prev) => ({
+      
+      setStreamingToolCallsByConversation((prev) => {
+        const prevConv = prev[targetConversationId] || {};
+        return {
+          ...prev,
+          [targetConversationId]: {
+            ...prevConv,
+            [agentId]: [...(prevConv[agentId] || []), toolData],
+          },
+        };
+      });
+      
+      setStreamingAgentIdByConversation((prev) => ({
         ...prev,
-        [agentId]: [...(prev[agentId] || []), toolData],
+        [targetConversationId]: agentId,
       }));
-      setStreamingAgentId(agentId);
     },
     onExit(agentId, code, signal, msgConversationId) {
-      logger.log('[App] onExit: agentId=%s selectedConversationId=%s msgConversationId=%s', 
-        agentId, selectedConversationId, msgConversationId);
+      const targetConversationId = msgConversationId || selectedConversationId;
       
-      // 如果消息指定了 conversationId 但不匹配当前对话，不处理
-      if (msgConversationId != null && msgConversationId !== selectedConversationId) {
-        logger.log('[App] onExit: ignoring exit for different conversation: %s vs current %s', 
-          msgConversationId, selectedConversationId);
-        // 仍然清理本地状态，但不保存消息
-        delete streamingRef.current[agentId];
-        setStreaming((s) => {
-          const o = { ...s };
-          delete o[agentId];
-          return o;
-        });
-        setStreamingToolCalls((prev) => {
-          const o = { ...prev };
-          delete o[agentId];
-          return o;
-        });
-        if (streamingAgentId === agentId) {
-          setStreamingAgentId(null);
-        }
-        return;
-      }
-
-      const content = streamingRef.current[agentId] || '';
-      const toolCalls = streamingToolCalls[agentId] || [];
-      logger.log('[App] onExit: saving assistant message, content.length=%d toolCalls=%d', content.length, toolCalls.length);
+      logger.log('[App] onExit: agentId=%s selectedConversationId=%s msgConversationId=%s targetConversationId=%s', 
+        agentId, selectedConversationId, msgConversationId, targetConversationId);
+      
+      // 获取该会话的流式内容
+      const convRef = streamingRefByConversation.current[targetConversationId] || {};
+      const content = convRef[agentId] || '';
+      
+      const convToolCalls = streamingToolCallsByConversation[targetConversationId] || {};
+      const toolCalls = convToolCalls[agentId] || [];
+      
+      logger.log('[App] onExit: saving assistant message, content.length=%d toolCalls=%d conversationId=%d', 
+        content.length, toolCalls.length, targetConversationId);
 
       const agent = agents.find((a) => a.id === agentId);
       const agentName = agent?.name || 'Agent';
 
+      // 保存消息到对应会话
       if (content.trim() || toolCalls.length > 0) {
         fetch(`${API}/messages`, {
           method: 'POST',
@@ -117,27 +163,43 @@ export default function App() {
             content,
             agent_id: agentId,
             agent_name: agentName,
-            task_id: selectedConversationId,
+            task_id: targetConversationId,
             metadata: toolCalls.length > 0 ? JSON.stringify({ tool_calls: toolCalls }) : null,
           }),
         }).catch((err) => {
           logger.error('[App] failed to save assistant message:', err);
         });
       }
-      delete streamingRef.current[agentId];
-      setStreaming((s) => {
-        const o = { ...s };
-        delete o[agentId];
-        return o;
+      
+      // 清理该会话的流式状态
+      delete streamingRefByConversation.current[targetConversationId]?.[agentId];
+      
+      setStreamingByConversation((prev) => {
+        const prevConv = prev[targetConversationId] || {};
+        const { [agentId]: _, ...rest } = prevConv;
+        return {
+          ...prev,
+          [targetConversationId]: rest,
+        };
       });
-      setStreamingToolCalls((prev) => {
-        const o = { ...prev };
-        delete o[agentId];
-        return o;
+      
+      setStreamingToolCallsByConversation((prev) => {
+        const prevConv = prev[targetConversationId] || {};
+        const { [agentId]: _, ...rest } = prevConv;
+        return {
+          ...prev,
+          [targetConversationId]: rest,
+        };
       });
-      if (streamingAgentId === agentId) {
-        setStreamingAgentId(null);
-      }
+      
+      // 如果当前会话的活跃 Agent 是此 Agent，清除它
+      setStreamingAgentIdByConversation((prev) => {
+        if (prev[targetConversationId] === agentId) {
+          const { [targetConversationId]: _, ...rest } = prev;
+          return rest;
+        }
+        return prev;
+      });
     },
   });
 
