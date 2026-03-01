@@ -1,3 +1,7 @@
+> Archive Note
+>
+> 本文档已归档，主文档为 `docs/20-roadmap/roadmap-next-phase-plan.md`（来自 `doc/plan-next-阶段计划.md`）。
+
 下一步计划：
 特性计划：
 1.左侧的task任务列修改为对话。可以新建对话，对话分组，每个对话显示最后聊天时间（几天前）    

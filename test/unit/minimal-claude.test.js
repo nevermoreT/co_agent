@@ -79,7 +79,8 @@ describe('minimal-claude.js 核心功能', () => {
         .trim();
     }
 
-    function parseNdjsonLine(line, onOutput) {
+    function parseNdjsonLine(line, callbacks) {
+      const { onOutput, onToolUse } = callbacks;
       const raw = stripAnsi(line);
       if (!raw) return;
       try {
@@ -87,7 +88,23 @@ describe('minimal-claude.js 核心功能', () => {
         if (obj.type === 'assistant' && obj.message?.content) {
           for (const block of obj.message.content) {
             if (block.type === 'text' && block.text) {
-              onOutput('stdout', block.text);
+              onOutput && onOutput('stdout', block.text);
+            } else if (block.type === 'tool_use') {
+              const toolName = block.name || 'tool';
+              const toolId = block.id || '';
+              const input = block.input || {};
+              let title = input.description || input.command || toolName;
+              if (typeof title === 'object') {
+                title = JSON.stringify(title);
+              }
+              onToolUse && onToolUse({
+                tool: toolName.toLowerCase(),
+                title: String(title).substring(0, 100),
+                status: 'running',
+                input,
+                output: '',
+                callID: toolId
+              });
             }
           }
         }
@@ -98,7 +115,10 @@ describe('minimal-claude.js 核心功能', () => {
 
     it('应该解析 assistant 类型的消息', () => {
       const outputs = [];
-      const onOutput = (stream, data) => outputs.push({ stream, data });
+      const callbacks = {
+        onOutput: (stream, data) => outputs.push({ stream, data }),
+        onToolUse: () => {}
+      };
       
       const line = JSON.stringify({
         type: 'assistant',
@@ -107,7 +127,7 @@ describe('minimal-claude.js 核心功能', () => {
         }
       });
       
-      parseNdjsonLine(line, onOutput);
+      parseNdjsonLine(line, callbacks);
       
       expect(outputs).toHaveLength(1);
       expect(outputs[0]).toEqual({ stream: 'stdout', data: 'Hello World' });
@@ -115,7 +135,10 @@ describe('minimal-claude.js 核心功能', () => {
 
     it('应该处理多个文本块', () => {
       const outputs = [];
-      const onOutput = (stream, data) => outputs.push({ stream, data });
+      const callbacks = {
+        onOutput: (stream, data) => outputs.push({ stream, data }),
+        onToolUse: () => {}
+      };
       
       const line = JSON.stringify({
         type: 'assistant',
@@ -127,30 +150,68 @@ describe('minimal-claude.js 核心功能', () => {
         }
       });
       
-      parseNdjsonLine(line, onOutput);
+      parseNdjsonLine(line, callbacks);
       
       expect(outputs).toHaveLength(2);
       expect(outputs[0].data).toBe('Hello ');
       expect(outputs[1].data).toBe('World');
     });
 
+    it('应该解析 tool_use 类型的消息', () => {
+      const toolCalls = [];
+      const callbacks = {
+        onOutput: () => {},
+        onToolUse: (data) => toolCalls.push(data)
+      };
+      
+      const line = JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [{
+            type: 'tool_use',
+            id: 'tooluse_123',
+            name: 'Bash',
+            input: { command: 'ls -la', description: 'List files' }
+          }]
+        }
+      });
+      
+      parseNdjsonLine(line, callbacks);
+      
+      expect(toolCalls).toHaveLength(1);
+      expect(toolCalls[0]).toEqual({
+        tool: 'bash',
+        title: 'List files',
+        status: 'running',
+        input: { command: 'ls -la', description: 'List files' },
+        output: '',
+        callID: 'tooluse_123'
+      });
+    });
+
     it('应该忽略非 assistant 类型的消息', () => {
       const outputs = [];
-      const onOutput = (stream, data) => outputs.push({ stream, data });
+      const callbacks = {
+        onOutput: (stream, data) => outputs.push({ stream, data }),
+        onToolUse: () => {}
+      };
       
       const line = JSON.stringify({
         type: 'system',
         message: 'Some system message'
       });
       
-      parseNdjsonLine(line, onOutput);
+      parseNdjsonLine(line, callbacks);
       
       expect(outputs).toHaveLength(0);
     });
 
     it('应该忽略非 text 类型的内容块', () => {
       const outputs = [];
-      const onOutput = (stream, data) => outputs.push({ stream, data });
+      const callbacks = {
+        onOutput: (stream, data) => outputs.push({ stream, data }),
+        onToolUse: () => {}
+      };
       
       const line = JSON.stringify({
         type: 'assistant',
@@ -162,7 +223,7 @@ describe('minimal-claude.js 核心功能', () => {
         }
       });
       
-      parseNdjsonLine(line, onOutput);
+      parseNdjsonLine(line, callbacks);
       
       expect(outputs).toHaveLength(1);
       expect(outputs[0].data).toBe('Text content');
@@ -170,31 +231,40 @@ describe('minimal-claude.js 核心功能', () => {
 
     it('应该处理无效 JSON（静默忽略）', () => {
       const outputs = [];
-      const onOutput = (stream, data) => outputs.push({ stream, data });
+      const callbacks = {
+        onOutput: (stream, data) => outputs.push({ stream, data }),
+        onToolUse: () => {}
+      };
       
-      parseNdjsonLine('not valid json', onOutput);
+      parseNdjsonLine('not valid json', callbacks);
       
       expect(outputs).toHaveLength(0);
     });
 
     it('应该处理空行', () => {
       const outputs = [];
-      const onOutput = (stream, data) => outputs.push({ stream, data });
+      const callbacks = {
+        onOutput: (stream, data) => outputs.push({ stream, data }),
+        onToolUse: () => {}
+      };
       
-      parseNdjsonLine('', onOutput);
-      parseNdjsonLine('   ', onOutput);
+      parseNdjsonLine('', callbacks);
+      parseNdjsonLine('   ', callbacks);
       
       expect(outputs).toHaveLength(0);
     });
 
     it('应该处理带 ANSI 的行', () => {
       const outputs = [];
-      const onOutput = (stream, data) => outputs.push({ stream, data });
+      const callbacks = {
+        onOutput: (stream, data) => outputs.push({ stream, data }),
+        onToolUse: () => {}
+      };
       
       const response = ClaudeCliMock.createAssistantResponse('Test');
       const line = '\x1b[32m' + JSON.stringify(response) + '\x1b[0m';
       
-      parseNdjsonLine(line, onOutput);
+      parseNdjsonLine(line, callbacks);
       
       expect(outputs).toHaveLength(1);
       expect(outputs[0].data).toBe('Test');

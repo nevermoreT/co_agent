@@ -5,164 +5,278 @@
 import { describe, it, expect } from 'vitest';
 import { OpencodeCliMock, createNdjsonOutput } from '../mocks/cliMock.js';
 
-describe('minimal-opencode.js 核心功能', () => {
-  describe('stripAnsi 函数', () => {
-    // 复制 opencode 版本的 stripAnsi 实现
-    function stripAnsi(s) {
-      return String(s)
-        .replace(/\r/g, '')
-        .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-        .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
-        .replace(/\x1b\?[0-9;]*[A-Za-z]/g, '')
-        .replace(/\[\?[0-9;]*[A-Za-z]/g, '')
-        .trim();
+/**
+ * 从文本中提取完整的 JSON 对象（从 minimal-opencode.js 复制）
+ */
+function extractJsonObjects(text) {
+  const objects = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+  
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    
+    if (c === '\x1b') {
+      let j = i + 1;
+      if (j < text.length && text[j] === '[') {
+        j++;
+        while (j < text.length && /[0-9;]/.test(text[j])) j++;
+        if (j < text.length && /[A-Za-z]/.test(text[j])) j++;
+        i = j - 1;
+        continue;
+      } else if (j < text.length && text[j] === ']') {
+        const endBell = text.indexOf('\x07', j);
+        const endEsc = text.indexOf('\x1b\\', j);
+        if (endBell !== -1 && (endEsc === -1 || endBell < endEsc)) {
+          i = endBell;
+        } else if (endEsc !== -1) {
+          i = endEsc + 1;
+        } else {
+          i = j;
+        }
+        continue;
+      }
     }
+    
+    if (c === '\r') continue;
+    
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    
+    if (c === '\\' && inString) {
+      escape = true;
+      continue;
+    }
+    
+    if (c === '"') {
+      inString = !inString;
+      continue;
+    }
+    
+    if (inString) continue;
+    
+    if (c === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        objects.push({ text: text.substring(start, i + 1), start });
+        start = -1;
+      }
+    }
+  }
+  
+  const lastObj = objects[objects.length - 1];
+  const consumed = lastObj ? lastObj.start + lastObj.text.length : 0;
+  const remaining = text.substring(consumed);
+  
+  return { objects: objects.map(o => o.text), remaining };
+}
 
-    it('应该移除基本的 ANSI 颜色代码', () => {
-      const input = '\x1b[32mHello\x1b[0m';
-      expect(stripAnsi(input)).toBe('Hello');
+/**
+ * 解析 JSON 对象（从 minimal-opencode.js 复制）
+ */
+function parseJsonObject(jsonStr, callbacks, onSession) {
+  const { onOutput, onToolUse } = callbacks;
+  
+  try {
+    const obj = JSON.parse(jsonStr);
+    
+    let sessionId = null;
+    if (obj.type === 'session') {
+      sessionId = obj.id || obj.session_id;
+    } else if (obj.session_id) {
+      sessionId = obj.session_id;
+    }
+    if (sessionId) {
+      onSession && onSession(sessionId);
+    }
+    
+    if (obj.type === 'text' && obj.part?.text) {
+      onOutput && onOutput('stdout', obj.part.text);
+    } else if (obj.type === 'tool_use') {
+      const toolName = obj.part?.tool || 'tool';
+      const state = obj.part?.state || {};
+      const title = obj.part?.title || state.title || toolName;
+      const status = state.status || 'completed';
+      const input = state.input || {};
+      const output = state.output || '';
+      const callID = obj.part?.callID || '';
+      
+      if (onToolUse) {
+        onToolUse({ tool: toolName, title, status, input, output, callID });
+      }
+    } else if (obj.type === 'permission_request') {
+      onOutput && onOutput('stderr', `[权限请求] ${obj.description || JSON.stringify(obj)}\n`);
+    }
+  } catch {
+    if (!jsonStr.trim().startsWith('{')) {
+      callbacks.onOutput && callbacks.onOutput('stdout', jsonStr);
+    }
+  }
+}
+
+describe('minimal-opencode.js 核心功能', () => {
+  describe('extractJsonObjects 函数', () => {
+    it('应该提取单个 JSON 对象', () => {
+      const input = '{"type":"text","part":{"text":"hello"}}';
+      const { objects } = extractJsonObjects(input);
+      
+      expect(objects).toHaveLength(1);
+      expect(JSON.parse(objects[0])).toEqual({ type: 'text', part: { text: 'hello' } });
     });
 
-    it('应该移除 \\x1b? 开头的序列', () => {
-      const input = '\x1b?25lHello\x1b?25h';
-      expect(stripAnsi(input)).toBe('Hello');
+    it('应该提取多个 JSON 对象', () => {
+      const input = '{"a":1}{"b":2}{"c":3}';
+      const { objects } = extractJsonObjects(input);
+      
+      expect(objects).toHaveLength(3);
+      expect(JSON.parse(objects[0])).toEqual({ a: 1 });
+      expect(JSON.parse(objects[1])).toEqual({ b: 2 });
+      expect(JSON.parse(objects[2])).toEqual({ c: 3 });
     });
 
-    it('应该移除 [? 开头的序列', () => {
-      const input = '[?25lHello[?25h';
-      expect(stripAnsi(input)).toBe('Hello');
+    it('应该处理包含换行符的 JSON', () => {
+      // 注意：JSON.stringify 会将换行符转义为 \n，这是正确的 JSON 格式
+      const input = '{"type":"tool_use","part":{"state":{"output":"line1\\nline2\\nline3"}}}';
+      const { objects } = extractJsonObjects(input);
+      
+      expect(objects).toHaveLength(1);
+      const parsed = JSON.parse(objects[0]);
+      expect(parsed.part.state.output).toBe('line1\nline2\nline3');
     });
 
-    it('应该处理复杂的 ANSI 组合', () => {
-      const input = '\x1b[?25l\x1b[2J\x1b[H\x1b[32mSuccess\x1b[0m\x1b[?25h';
-      const result = stripAnsi(input);
-      // 当前实现不处理 \x1b[? 开头的序列，只处理 \x1b? 和 [?
-      // 所以结果会包含一些残留字符
-      expect(result).toContain('Success');
+    it('应该处理包含转义引号的 JSON', () => {
+      const input = '{"text":"He said \\"hello\\""}';
+      const { objects } = extractJsonObjects(input);
+      
+      expect(objects).toHaveLength(1);
+      const parsed = JSON.parse(objects[0]);
+      expect(parsed.text).toBe('He said "hello"');
+    });
+
+    it('应该跳过 ANSI 转义序列', () => {
+      const input = '\x1b[32m{"type":"text"}\x1b[0m';
+      const { objects } = extractJsonObjects(input);
+      
+      expect(objects).toHaveLength(1);
+    });
+
+    it('应该处理不完整的 JSON（返回 remaining）', () => {
+      const input = '{"type":"text","part":{';
+      const { objects, remaining } = extractJsonObjects(input);
+      
+      expect(objects).toHaveLength(0);
+      expect(remaining).toBe('{"type":"text","part":{');
+    });
+
+    it('应该处理嵌套 JSON 对象', () => {
+      const input = '{"outer":{"inner":{"deep":"value"}}}';
+      const { objects } = extractJsonObjects(input);
+      
+      expect(objects).toHaveLength(1);
+      const parsed = JSON.parse(objects[0]);
+      expect(parsed.outer.inner.deep).toBe('value');
+    });
+
+    it('应该处理大型 tool_use JSON', () => {
+      const largeOutput = 'x'.repeat(10000);
+      const input = JSON.stringify({
+        type: 'tool_use',
+        part: {
+          tool: 'read',
+          state: {
+            status: 'completed',
+            output: largeOutput
+          }
+        }
+      });
+      
+      const { objects } = extractJsonObjects(input);
+      
+      expect(objects).toHaveLength(1);
+      const parsed = JSON.parse(objects[0]);
+      expect(parsed.part.state.output).toBe(largeOutput);
     });
   });
 
-  describe('parseNdjsonLine 函数', () => {
-    // 复制 opencode 版本的 parseNdjsonLine 实现
-    function stripAnsi(s) {
-      return String(s)
-        .replace(/\r/g, '')
-        .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-        .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
-        .replace(/\x1b\?[0-9;]*[A-Za-z]/g, '')
-        .replace(/\[\?[0-9;]*[A-Za-z]/g, '')
-        .trim();
-    }
-
-    function parseNdjsonLine(line, onOutput) {
-      const raw = stripAnsi(line);
-      if (!raw) return;
-      try {
-        const obj = JSON.parse(raw);
-        if (obj.type === 'text' && obj.part?.text) {
-          onOutput('stdout', obj.part.text);
-        } else if (obj.type === 'tool_use' && obj.part?.state?.output) {
-          const toolName = obj.part.tool || 'tool';
-          const title = obj.part.state.title || toolName;
-          onOutput('stdout', `\n[${title}]\n${obj.part.state.output}\n`);
-        } else if (obj.type === 'permission_request') {
-          onOutput('stderr', `[权限请求] ${obj.description || JSON.stringify(obj)}\n`);
-        }
-      } catch {
-        if (raw.includes('permission') || raw.includes('confirm') || raw.includes('[Y/n]') || raw.includes('?')) {
-          onOutput('stderr', `[交互提示] ${raw}\n`);
-        }
-      }
-    }
-
-    it('应该解析 text 类型的消息', () => {
+  describe('parseJsonObject 函数', () => {
+    it('应该解析 text 类型消息', () => {
       const outputs = [];
-      const onOutput = (stream, data) => outputs.push({ stream, data });
+      const callbacks = {
+        onOutput: (stream, data) => outputs.push({ stream, data }),
+        onToolUse: () => {}
+      };
       
-      const line = JSON.stringify({
-        type: 'text',
-        part: { text: 'Hello World' }
-      });
-      
-      parseNdjsonLine(line, onOutput);
+      const json = '{"type":"text","part":{"text":"Hello World"}}';
+      parseJsonObject(json, callbacks);
       
       expect(outputs).toHaveLength(1);
       expect(outputs[0]).toEqual({ stream: 'stdout', data: 'Hello World' });
     });
 
-    it('应该解析 tool_use 类型的消息', () => {
-      const outputs = [];
-      const onOutput = (stream, data) => outputs.push({ stream, data });
+    it('应该解析 tool_use 类型消息并调用 onToolUse', () => {
+      const toolCalls = [];
+      const callbacks = {
+        onOutput: () => {},
+        onToolUse: (data) => toolCalls.push(data)
+      };
       
-      const line = JSON.stringify({
+      const json = JSON.stringify({
         type: 'tool_use',
         part: {
-          tool: 'bash',
+          tool: 'read',
+          title: 'read test\\api\\routes.test.js',
+          callID: 'call_123',
           state: {
-            title: 'Execute Command',
-            output: 'ls -la'
+            status: 'completed',
+            input: { filePath: 'test/api/routes.test.js' },
+            output: 'file content here'
           }
         }
       });
       
-      parseNdjsonLine(line, onOutput);
+      parseJsonObject(json, callbacks);
       
-      expect(outputs).toHaveLength(1);
-      expect(outputs[0].stream).toBe('stdout');
-      expect(outputs[0].data).toContain('[Execute Command]');
-      expect(outputs[0].data).toContain('ls -la');
+      expect(toolCalls).toHaveLength(1);
+      expect(toolCalls[0]).toEqual({
+        tool: 'read',
+        title: 'read test\\api\\routes.test.js',
+        status: 'completed',
+        input: { filePath: 'test/api/routes.test.js' },
+        output: 'file content here',
+        callID: 'call_123'
+      });
     });
 
-    it('应该解析 permission_request 类型的消息', () => {
+    it('应该提取 session ID', () => {
+      let sessionId = null;
+      const callbacks = { onOutput: () => {}, onToolUse: () => {} };
+      
+      const json = '{"type":"session","session_id":"ses_abc123"}';
+      parseJsonObject(json, callbacks, (sid) => { sessionId = sid; });
+      
+      expect(sessionId).toBe('ses_abc123');
+    });
+
+    it('应该解析 permission_request 类型消息', () => {
       const outputs = [];
-      const onOutput = (stream, data) => outputs.push({ stream, data });
+      const callbacks = {
+        onOutput: (stream, data) => outputs.push({ stream, data }),
+        onToolUse: () => {}
+      };
       
-      const line = JSON.stringify({
-        type: 'permission_request',
-        description: 'Allow file access?'
-      });
-      
-      parseNdjsonLine(line, onOutput);
+      const json = '{"type":"permission_request","description":"Allow file access?"}';
+      parseJsonObject(json, callbacks);
       
       expect(outputs).toHaveLength(1);
       expect(outputs[0].stream).toBe('stderr');
       expect(outputs[0].data).toContain('[权限请求]');
-      expect(outputs[0].data).toContain('Allow file access?');
-    });
-
-    it('应该检测交互提示（非 JSON）', () => {
-      const outputs = [];
-      const onOutput = (stream, data) => outputs.push({ stream, data });
-      
-      parseNdjsonLine('Do you want to continue? [Y/n]', onOutput);
-      
-      expect(outputs).toHaveLength(1);
-      expect(outputs[0].stream).toBe('stderr');
-      expect(outputs[0].data).toContain('[交互提示]');
-    });
-
-    it('应该忽略其他类型的消息', () => {
-      const outputs = [];
-      const onOutput = (stream, data) => outputs.push({ stream, data });
-      
-      const line = JSON.stringify({
-        type: 'step_start',
-        step_id: 'step-1'
-      });
-      
-      parseNdjsonLine(line, onOutput);
-      
-      expect(outputs).toHaveLength(0);
-    });
-
-    it('应该处理空行', () => {
-      const outputs = [];
-      const onOutput = (stream, data) => outputs.push({ stream, data });
-      
-      parseNdjsonLine('', onOutput);
-      parseNdjsonLine('   ', onOutput);
-      
-      expect(outputs).toHaveLength(0);
     });
   });
 

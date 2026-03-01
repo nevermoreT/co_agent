@@ -119,12 +119,25 @@ export function setupWebSocket(httpServer) {
                 }
                 throttled.push(stream, data);
               };
+              const onToolUse = (toolData) => {
+                logger.log('[claude-cli] tool_use:', toolData.tool, toolData.title);
+                send({ 
+                  type: 'tool_use', 
+                  agentId: id, 
+                  tool: toolData.tool, 
+                  title: toolData.title, 
+                  status: toolData.status, 
+                  input: toolData.input,
+                  output: toolData.output,
+                  callID: toolData.callID
+                });
+              };
               const onExit = (code, signal) => {
                 throttled.flush();
                 logger.log('[claude-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
                 send({ type: 'exit', agentId: id, code, signal });
               };
-              const ok = await agentRunner.runClaudeCli(id, text, onOutput, onExit, convId);
+              const ok = await agentRunner.runClaudeCli(id, text, onOutput, onExit, convId, onToolUse);
               if (!ok) {
                 logger.log('[websocket] send: runClaudeCli failed for agentId=%s', id);
                 send({ type: 'error', agentId: id, message: 'Claude CLI start failed (already running?)' });

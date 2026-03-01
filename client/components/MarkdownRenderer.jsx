@@ -1,8 +1,36 @@
-import { useState, memo } from 'react';
+import { useState, memo, Component } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import './MarkdownRenderer.css';
+
+/**
+ * 错误边界组件 - 捕获子组件的渲染错误
+ */
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="error-boundary">
+          <span className="error-boundary-icon">⚠️</span>
+          <span className="error-boundary-text">
+            {this.props.fallback || '渲染出错'}
+          </span>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /**
  * Markdown 渲染器组件
@@ -11,13 +39,17 @@ import './MarkdownRenderer.css';
  */
 export const MarkdownRenderer = memo(function MarkdownRenderer({ content, className = '' }) {
   if (!content) return null;
+  
+  // 确保 content 是字符串
+  const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
 
   return (
-    <div className={`markdown-renderer ${className}`}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
-        components={{
+    <ErrorBoundary fallback="Markdown 渲染出错">
+      <div className={`markdown-renderer ${className}`}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw]}
+          components={{
           // 代码块
           code({ inline, className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '');
@@ -72,9 +104,10 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, classN
           },
         }}
       >
-        {content}
+        {contentStr}
       </ReactMarkdown>
     </div>
+    </ErrorBoundary>
   );
 });
 
@@ -131,6 +164,27 @@ export function ToolUseMessage({ toolCalls }) {
   const count = toolCalls.length;
   const firstTool = toolCalls[0];
   
+  // 安全地格式化输出内容
+  const formatOutput = (output) => {
+    if (!output) return null;
+    if (typeof output === 'string') return output;
+    try {
+      return JSON.stringify(output, null, 2);
+    } catch {
+      return String(output);
+    }
+  };
+  
+  // 安全地获取 input 的 keys
+  const getInputKeys = (input) => {
+    if (!input || typeof input !== 'object') return [];
+    try {
+      return Object.keys(input);
+    } catch {
+      return [];
+    }
+  };
+  
   return (
     <div className="tool-use-message">
       <button
@@ -147,31 +201,44 @@ export function ToolUseMessage({ toolCalls }) {
       </button>
       {isExpanded && (
         <div className="tool-use-content">
-          {toolCalls.map((tc, idx) => (
-            <div key={idx} className="tool-use-item">
-              <div className="tool-use-item-header">
-                <span className="tool-use-item-tool">{tc.tool}</span>
-                <span className={`tool-use-item-status ${tc.status}`}>{tc.status}</span>
-              </div>
-              {tc.title && tc.title !== tc.tool && (
-                <div className="tool-use-item-title">{tc.title}</div>
-              )}
-              {tc.input && Object.keys(tc.input).length > 0 && (
-                <div className="tool-use-item-input">
-                  <div className="tool-use-item-label">参数:</div>
-                  <pre className="tool-use-item-code">{JSON.stringify(tc.input, null, 2)}</pre>
+          {toolCalls.map((tc, idx) => {
+            const inputKeys = getInputKeys(tc.input);
+            const outputStr = formatOutput(tc.output);
+            
+            return (
+              <div key={idx} className="tool-use-item">
+                <div className="tool-use-item-header">
+                  <span className="tool-use-item-tool">{tc.tool || 'unknown'}</span>
+                  <span className={`tool-use-item-status ${tc.status || 'unknown'}`}>
+                    {tc.status || 'unknown'}
+                  </span>
                 </div>
-              )}
-              {tc.output && (
-                <div className="tool-use-item-output">
-                  <div className="tool-use-item-label">结果:</div>
-                  <div className="tool-use-item-result">
-                    <MarkdownRenderer content={tc.output} />
+                {tc.title && tc.title !== tc.tool && (
+                  <div className="tool-use-item-title">{tc.title}</div>
+                )}
+                {inputKeys.length > 0 && (
+                  <div className="tool-use-item-input">
+                    <div className="tool-use-item-label">参数:</div>
+                    <pre className="tool-use-item-code">
+                      {JSON.stringify(tc.input, null, 2)}
+                    </pre>
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+                {outputStr && (
+                  <div className="tool-use-item-output">
+                    <div className="tool-use-item-label">结果:</div>
+                    <div className="tool-use-item-result">
+                      {outputStr.length > 500 ? (
+                        <pre className="tool-use-item-code">{outputStr}</pre>
+                      ) : (
+                        <MarkdownRenderer content={outputStr} />
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

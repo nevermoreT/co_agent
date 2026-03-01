@@ -84,7 +84,7 @@ router.post('/messages', (req, res) => {
       agent_name || null,
       task_id || null,
       type,
-      metadata ? JSON.stringify(metadata) : null
+      typeof metadata === 'string' ? metadata : (metadata ? JSON.stringify(metadata) : null)
     );
 
     if (task_id) {

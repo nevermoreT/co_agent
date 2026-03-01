@@ -497,3 +497,24 @@
   padding: 2px 8px;
   border-radius: var(--radius-xs);
 }
+
+/* 错误边界样式 */
+.error-boundary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #fff5f5;
+  border: 1px solid #ffcdd2;
+  border-radius: var(--radius-sm);
+  color: #c62828;
+  font-size: var(--text-xs);
+}
+
+.error-boundary-icon {
+  font-size: var(--text-sm);
+}
+
+.error-boundary-text {
+  font-family: var(--font-mono);
+}

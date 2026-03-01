@@ -1,3 +1,7 @@
+> Archive Note
+>
+> 本文档已归档，主文档为 `docs/30-phases/phase-01-completion-report.md`（来自 `doc/phase1-completion-report-updated.md`）。
+
 # Phase 1 完成报告：对话左栏改造
 
 **完成时间**: 2026-02-20
