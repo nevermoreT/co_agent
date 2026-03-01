@@ -68,8 +68,8 @@ export default function App() {
 
   const { ready, runningAgentIds, lastError, clearError, sendStart, sendStop, sendText } = useWs({
     onOutput(agentId, stream, data, msgConversationId) {
-      // 使用消息中的 conversationId 或当前选中的 conversationId
-      const targetConversationId = msgConversationId || selectedConversationId;
+      // 使用消息中的 conversationId，否则使用当前选中的 conversationId
+      const targetConversationId = msgConversationId != null ? msgConversationId : selectedConversationId;
       
       // 过滤非当前对话的消息（如果消息指定了 conversationId）
       if (msgConversationId != null && msgConversationId !== selectedConversationId) {
@@ -103,11 +103,11 @@ export default function App() {
       // 更新当前会话的活跃 Agent
       setStreamingAgentIdByConversation((prev) => ({
         ...prev,
-        [targetConversationId]: agentId,
+        [selectedConversationId]: agentId, // 注意：这里是当前选中的会话
       }));
     },
     onToolUse(agentId, toolData, msgConversationId) {
-      const targetConversationId = msgConversationId || selectedConversationId;
+      const targetConversationId = msgConversationId != null ? msgConversationId : selectedConversationId;
       
       // 过滤非当前对话的消息
       if (msgConversationId != null && msgConversationId !== selectedConversationId) {
@@ -131,11 +131,12 @@ export default function App() {
       
       setStreamingAgentIdByConversation((prev) => ({
         ...prev,
-        [targetConversationId]: agentId,
+        [selectedConversationId]: agentId, // 注意：这里是当前选中的会话
       }));
     },
     onExit(agentId, code, signal, msgConversationId) {
-      const targetConversationId = msgConversationId || selectedConversationId;
+      // 获取消息所属的会话 ID（如果存在）
+      const targetConversationId = msgConversationId != null ? msgConversationId : selectedConversationId;
       
       logger.log('[App] onExit: agentId=%s selectedConversationId=%s msgConversationId=%s targetConversationId=%s', 
         agentId, selectedConversationId, msgConversationId, targetConversationId);
@@ -174,6 +175,7 @@ export default function App() {
       // 清理该会话的流式状态
       delete streamingRefByConversation.current[targetConversationId]?.[agentId];
       
+      // 更新对应会话的流式内容状态
       setStreamingByConversation((prev) => {
         const prevConv = prev[targetConversationId] || {};
         const { [agentId]: _, ...rest } = prevConv;
@@ -192,9 +194,10 @@ export default function App() {
         };
       });
       
-      // 如果当前会话的活跃 Agent 是此 Agent，清除它
+      // 清理对应会话的活跃 Agent 状态
       setStreamingAgentIdByConversation((prev) => {
-        if (prev[targetConversationId] === agentId) {
+        const prevAgent = prev[targetConversationId];
+        if (prevAgent === agentId) {
           const { [targetConversationId]: _, ...rest } = prev;
           return rest;
         }
