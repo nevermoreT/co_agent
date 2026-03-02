@@ -343,6 +343,18 @@ CREATE TABLE a2a_routes (
 - [ ] 多 Agent 协作工作流
 - [ ] 消息优先级队列
 
+## 重要设计决策
+
+在开始 Phase 4 实现之前，我们进行了详细的设计讨论，包括：
+
+- **简单聊天 vs A2A Task**：何时触发 A2A？如何区分？
+- **会话与 Task 的关系**：一个会话可以有多个 Task 吗？
+- **权限控制**：Agent 可以随便调用其他 Agent 吗？
+- **循环调用防护**：如何避免 A2 → B → A 的死循环？
+- **Task 可见性**：用户能看到 Task 执行过程吗？
+
+**详细设计决策记录**：[phase-04-design-decisions.md](./phase-04-design-decisions.md)
+
 ## 参考资源
 
 ### Google A2A 协议

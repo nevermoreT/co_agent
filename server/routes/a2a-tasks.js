@@ -1,6 +1,6 @@
 import express from 'express';
 import a2aTaskManager from '../services/a2a/a2aTaskManager.js';
-import agentRunner from '../services/agentRunner.js';
+import * as agentRunner from '../services/agentRunner.js';
 import db from '../db.js';
 import logger from '../logger.js';
 
