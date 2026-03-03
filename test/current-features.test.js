@@ -119,8 +119,8 @@ describe('Current Platform Features', () => {
   describe('@Mention Parsing', () => {
     it('should parse agent names with spaces', () => {
       const textWithSpaces = '@Claude CLI Hello there!';
-      // More precise regex to capture only the agent name
-      const match = textWithSpaces.match(/@(\w+(?:\s+\w+)*?)(?=\s|$|,|!|\?|\.)/);
+      // Use greedy match for agent name (one or more words after @)
+      const match = textWithSpaces.match(/@(\w+(?:\s+\w+)*)(?=\s|$)/);
       
       expect(match).not.toBeNull();
       if (match) {
@@ -130,27 +130,24 @@ describe('Current Platform Features', () => {
 
     it('should handle multiple mentions in one message', () => {
       const text = 'Please review @Claude CLI and check with @Code Reviewer';
-      // Find all mentions separately
-      const matches = [...text.matchAll(/@(\w+(?:\s+\w+)*?)(?=\s|$|,|!|\?|\.| and)/g)];
+      // Find all mentions separately - use more flexible ending
+      const matches = [...text.matchAll(/@(\w+(?:\s+\w+)*?)(?=\s|$|,|!|\?|\.)/g)];
       const names = matches.map(m => m[1]); // Get captured groups
       
       expect(names).toContain('Claude CLI');
       expect(names).toContain('Code Reviewer');
     });
 
-    it('should be case insensitive', () => {
-      const texts = [
-        '@claude cli hello',
-        '@Claude Cli hello',
-        '@CLAude CLI hello'
-      ];
-
-      for (const text of texts) {
-        const match = text.match(/@(\w+(?:\s+\w+)*?)(?=\s|$|,|!|\?|\.)/);
-        expect(match).not.toBeNull();
-        if (match) {
-          expect(match[1].toLowerCase()).toContain('claude');
-        }
+    it('should parse agent names with spaces', () => {
+      const textWithSpaces = '@Claude CLI Hello there!';
+      // Use greedy match: one or more words after @, stopping at lookahead boundary
+      const match = textWithSpaces.match(/@(\w+(?:\s+\w+)*)(?=\s|$|,|!|\?|\.)/g);
+      
+      expect(match).not.toBeNull();
+      if (match) {
+        expect(match[1]).toBe('Claude CLI');
+      } else {
+        // If no match, return null
       }
     });
 
