@@ -9,38 +9,31 @@ Multi-agent collaboration platform with Node.js (Express + WebSocket) backend an
 ## Commands
 
 ```bash
-# Development
 npm install                 # Install dependencies
 npm run dev                 # Development (server + client with hot reload)
 npm run server              # Server only (port 3000)
 npm run client              # Client only (port 5173)
-
-# Testing
 npm run test:run            # Run all tests once
 npm test                    # Run tests in watch mode
 npm run test:coverage       # Run with coverage
 npx vitest run test/unit/minimal-claude.test.js  # Single test file
 npx vitest run -t "parseCommand"                 # Pattern matching
 npx vitest run test/hooks/                       # Specific directory
-
-# Linting
 npm run lint                # Run ESLint
 npm run lint:fix            # Auto-fix issues
-
-# Production
-npm run build && npm run server
+npm run build && npm run server  # Production build
 ```
 
 ## Code Style
 
-### Module System
+### Module System & Imports
 
 - ES Modules (`import`/`export`) - package.json has `"type": "module"`
 - `.js` for JavaScript, `.jsx` for React components
 - No React import needed (React 17+ automatic JSX)
 - Import order: built-ins → third-party → local (blank line separated)
 
-### Naming
+### Naming Conventions
 
 | Type | Convention | Example |
 |------|------------|---------|
@@ -74,7 +67,6 @@ npm run build && npm run server
 ### Error Handling
 
 ```javascript
-// Always try-catch async operations
 try {
   const row = db.prepare('SELECT * FROM agents WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: 'Not found' });
@@ -89,26 +81,15 @@ try {
 }
 ```
 
-### Async/Await
+### Other Guidelines
 
-- Prefer over `.then()` chains
-- Use try-catch-finally pattern
-
-### Comments
-
-- Self-documenting code preferred
-- JSDoc for complex exports only
-- Chinese acceptable for internal docs
-
-### ESLint
-
-- `no-unused-vars`: warn (ignore `_` prefix)
-- `no-console`: off (use logger)
-- `no-empty`: warn
+- **Async/Await**: Prefer over `.then()` chains, use try-catch-finally
+- **Comments**: Self-documenting code preferred; JSDoc for complex exports; Chinese OK
+- **ESLint**: `no-unused-vars`: warn (ignore `_`), `no-console`: off, `no-empty`: warn
 
 ## Architecture
 
-### Structure
+### File Structure
 
 ```
 co_agent/
@@ -129,8 +110,7 @@ co_agent/
 
 ### WebSocket Protocol
 
-**Client → Server:** `{ action, agentId, text, conversationId }`
-
+**Client → Server:** `{ action, agentId, text, conversationId }`  
 Actions: `start`, `send`, `stop`, `status`
 
 **Server → Client:**
@@ -158,7 +138,7 @@ Actions: `start`, `send`, `stop`, `status`
 - Callbacks: `onOutput(stream, data)`, `onToolUse(toolData)`, `onExit(code, signal)`
 - Tool format: `{ tool, title, status, input, output, callID }`
 
-### Windows
+### Windows Compatibility
 
 - `shell: true` with `spawn()`
 - Replace `\n` with spaces in prompts
@@ -178,6 +158,6 @@ Actions: `start`, `send`, `stop`, `status`
 2. `npm run test:run`
 3. `npm run build`
 
-## Docs
+## Documentation
 
 See `docs/README.md`
