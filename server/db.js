@@ -2,6 +2,7 @@ import initSqlJs from 'sql.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import fs from 'fs';
+import logger from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, '..', 'data');
