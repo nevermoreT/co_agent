@@ -34,10 +34,10 @@
 ### phase
 - [phase-04-overview.md](30-phases/phase-04-overview.md) - A2A 与主动开口机制概览
 - [phase-04-design-decisions.md](30-phases/phase-04-design-decisions.md) - **重要：设计决策记录**
-- [phase-04-01-a2a-protocol.md](30-phases/phase-04-01-a2a-protocol.md) - A2A 协议实现
-- [phase-04-02-proactive-speaking.md](30-phases/phase-04-02-proactive-speaking.md) - 主动开口机制
-- [phase-04-03-intent-router.md](30-phases/phase-04-03-intent-router.md) - 意图识别与路由
-- [phase-04-04-mention-guard.md](30-phases/phase-04-04-mention-guard.md) - 提及防护机制
+- [phase-04-01-a2a-protocol.md](30-phases/phase-04-01-a2a-protocol.md) - Phase 4.1: A2A 协议实现 ✅
+- [phase-04-02-intent-router.md](30-phases/phase-04-02-intent-router.md) - Phase 4.2: 意图识别与路由
+- [phase-04-03-mention-guard.md](30-phases/phase-04-03-mention-guard.md) - Phase 4.3: 提及防护机制
+- [phase-04-04-proactive-speaking.md](30-phases/phase-04-04-proactive-speaking.md) - Phase 4.4: 主动开口机制（高阶特性）
 - [phase-03-overview.md](30-phases/phase-03-overview.md) - migrated
 - [phase-03-01-system-prompt.md](30-phases/phase-03-01-system-prompt.md) - migrated
 - [phase-03-02-agent-soul.md](30-phases/phase-03-02-agent-soul.md) - migrated

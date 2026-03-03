@@ -1,8 +1,10 @@
-# Phase 4.4: Mention Guard（提及风暴防护）
+# Phase 4.3: Mention Guard（提及风暴防护）
 
 ## 问题描述
 
 ### Mention Storm 场景
+
+> **阶段说明**：本阶段在 Agent 间通信（4.2）完成后实现，确保 A2A 调用的安全性和稳定性。
 
 ```
 场景1: 无限循环
