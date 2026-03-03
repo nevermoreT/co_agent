@@ -129,10 +129,17 @@ db.exec(`
 `);
 
 try {
-  db.run('ALTER TABLE agents ADD COLUMN builtin_key TEXT');
-  save();
-} catch {
-  // column already exists
+  // Phase 4.2: A2A Tasks 表扩展 - 添加 conversation_id 字段
+  db.exec(`
+    ALTER TABLE a2a_tasks ADD COLUMN conversation_id INTEGER
+  `); 
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_a2a_tasks_conversation ON a2a_tasks(conversation_id)
+  `);
+  
+  logger.log('[DB] A2a_tasks table schema updated');
+} catch (error) {
+  logger.error('[DB] Failed to update a2a_tasks table schema:', error);
 }
 
 try {

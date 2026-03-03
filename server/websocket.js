@@ -1,5 +1,7 @@
 import { WebSocketServer } from 'ws';
 import * as agentRunner from './services/agentRunner.js';
+import { detectAgentInvocation } from './services/agentInvocationDetector.js';
+import { executeAgentInvocation } from './services/agentInvocationExecutor.js';
 import db from './db.js';
 import logger from './logger.js';
 
@@ -35,6 +37,53 @@ function createThrottledOutput(send, agentId, delay = 80) {
   };
 
   return { push, flush };
+}
+
+/**
+ * 创建 Agent 调用检测器
+ * 累积输出并在检测到调用意图时触发执行
+ */
+function createInvocationDetector(agentId, conversationId, send) {
+  let outputBuffer = '';
+  let hasInvoked = false; // 防止重复调用
+  
+  return {
+    process: (stream, data) => {
+      // 只检测 stdout 输出
+      if (stream !== 'stdout' || typeof data !== 'string') {
+        return;
+      }
+      
+      // 如果已经触发过调用，不再检测
+      if (hasInvoked) {
+        return;
+      }
+      
+      // 累积输出
+      outputBuffer += data;
+      
+      // 检测调用意图
+      const invocation = detectAgentInvocation(agentId, outputBuffer, conversationId);
+      
+      if (invocation) {
+        logger.log('[websocket] Detected agent invocation: Agent %d -> Agent %d', 
+          agentId, invocation.targetAgentId);
+        
+        // 标记已调用
+        hasInvoked = true;
+        
+        // 异步执行调用（不阻塞当前输出）
+        setImmediate(() => {
+          executeAgentInvocation(invocation, send);
+        });
+      }
+    },
+    
+    reset: () => {
+      outputBuffer = '';
+      hasInvoked = false;
+    },
+  };
 }
 
 export function setupWebSocket(httpServer) {
@@ -127,9 +176,16 @@ export function setupWebSocket(httpServer) {
           (async () => {
             try {
               const throttled = createThrottledOutput(sendWithContext, id);
+              
+              // 创建调用检测器
+              const invocationDetector = createInvocationDetector(id, convId, sendWithContext);
+              
               const onOutput = (stream, data) => {
                 if (stream === 'stdout' && typeof data === 'string' && data.length > 0) {
                   logger.log('[claude-cli] stdout chunk: %d chars', data.length);
+                  
+                  // 检测 Agent 调用意图
+                  invocationDetector.process(stream, data);
                 }
                 throttled.push(stream, data);
               };
@@ -167,9 +223,16 @@ export function setupWebSocket(httpServer) {
           logger.log('[websocket] send: agentId=%s is opencode-cli, calling runOpencodeCli', id);
           try {
             const throttled = createThrottledOutput(sendWithContext, id);
+            
+            // 创建调用检测器
+            const invocationDetector = createInvocationDetector(id, convId, sendWithContext);
+            
             const onOutput = (stream, data) => {
               if (stream === 'stdout' && typeof data === 'string' && data.length > 0) {
                 logger.log('[opencode-cli] stdout chunk:', data.length, 'chars');
+                
+                // 检测 Agent 调用意图
+                invocationDetector.process(stream, data);
               }
               throttled.push(stream, data);
             };
