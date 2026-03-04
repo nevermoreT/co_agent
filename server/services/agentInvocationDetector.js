@@ -51,7 +51,8 @@ export function detectAgentInvocation(sourceAgentId, output, conversationId) {
   logger.log('[AgentInvocationDetector] Checking output from Agent %d, length=%d', sourceAgentId, output.length);
 
   // 1. 查找所有 @mention
-  const mentionPattern = /@(\w+(?:\s+\w+)*?)(?=\s|$|,|!|\?|\.)/g;
+  // 支持中文、英文、数字和下划线
+  const mentionPattern = /@([\w\u4e00-\u9fa5]+(?:\s+[\w\u4e00-\u9fa5]+)*?)(?=\s|$|,|!|\?|\.|~)/g;
   const matches = [...output.matchAll(mentionPattern)];
   
   if (matches.length === 0) {
