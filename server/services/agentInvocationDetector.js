@@ -19,6 +19,10 @@ const INVOCATION_KEYWORDS = [
   '设计', '分析', '评估', '建议',
   '写', '创建', '生成', '编写',
   '看看', '查看', '阅读', '理解',
+  '醒醒', '起来', '过来', '出来',
+  '别睡', '别休息', '起来干活',
+  '有用户', '在找你', '需要你',
+  '帮个忙', '帮帮忙', '来帮',
   
   // 英文请求词
   'please', 'help', 'can you', 'could you', 'would you',
@@ -27,6 +31,8 @@ const INVOCATION_KEYWORDS = [
   'design', 'analyze', 'evaluate', 'suggest',
   'write', 'create', 'generate', 'build',
   'look at', 'examine', 'read', 'understand',
+  'wake up', 'come here', 'come out',
+  'user', 'looking for', 'need you',
 ];
 
 /**
@@ -42,20 +48,28 @@ export function detectAgentInvocation(sourceAgentId, output, conversationId) {
     return null;
   }
 
+  logger.log('[AgentInvocationDetector] Checking output from Agent %d, length=%d', sourceAgentId, output.length);
+
   // 1. 查找所有 @mention
   const mentionPattern = /@(\w+(?:\s+\w+)*?)(?=\s|$|,|!|\?|\.)/g;
   const matches = [...output.matchAll(mentionPattern)];
   
   if (matches.length === 0) {
+    logger.log('[AgentInvocationDetector] No @mentions found');
     return null;
   }
   
-  // 2. 获取所有活跃的 Agent（排除自己）
+  logger.log('[AgentInvocationDetector] Found %d @mentions: %s', matches.length, matches.map(m => m[1]).join(', '));
+  
+  // 2. 获取所有 Agent（排除自己）
   const agents = db.prepare(`
     SELECT id, name, role 
     FROM agents 
-    WHERE status = 'active' AND id != ?
+    WHERE id != ?
   `).all(sourceAgentId);
+  
+  logger.log('[AgentInvocationDetector] Found %d agents (excluding self)', agents.length);
+  agents.forEach(a => logger.log('[AgentInvocationDetector]   - Agent %d: %s', a.id, a.name));
   
   if (agents.length === 0) {
     return null;
@@ -64,22 +78,30 @@ export function detectAgentInvocation(sourceAgentId, output, conversationId) {
   // 3. 对每个 @mention 进行分析
   for (const match of matches) {
     const mentionedName = match[1].trim();
+    logger.log('[AgentInvocationDetector] Checking mention: "%s"', mentionedName);
+    
     const targetAgent = findAgentByName(agents, mentionedName);
     
     if (!targetAgent) {
-      // 不是有效的 Agent 名称，跳过
+      logger.log('[AgentInvocationDetector] No matching agent found for "%s"', mentionedName);
       continue;
     }
+    
+    logger.log('[AgentInvocationDetector] Matched agent: Agent %d (%s)', targetAgent.id, targetAgent.name);
     
     // 4. 提取 @mention 后的内容
     const afterMentionStart = match.index + match[0].length;
     const afterMention = output.slice(afterMentionStart).trim();
     
+    logger.log('[AgentInvocationDetector] Text after mention: "%s"', afterMention.substring(0, 100));
+    
     // 5. 判断是否是调用意图
     const isInvocation = isInvocationIntent(afterMention);
     
+    logger.log('[AgentInvocationDetector] Is invocation intent: %s', isInvocation);
+    
     if (isInvocation) {
-      logger.log('[AgentInvocationDetector] Detected invocation: Agent %d -> Agent %d (%s)', 
+      logger.log('[AgentInvocationDetector] ✓ Detected invocation: Agent %d -> Agent %d (%s)', 
         sourceAgentId, targetAgent.id, mentionedName);
       
       return {
@@ -95,6 +117,7 @@ export function detectAgentInvocation(sourceAgentId, output, conversationId) {
     }
   }
   
+  logger.log('[AgentInvocationDetector] No invocation intent detected');
   return null;
 }
 
