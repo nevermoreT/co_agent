@@ -239,6 +239,114 @@ export default function App() {
         return prev;
       });
     },
+    onA2AOutput(msg) {
+      const agentId = msg.agentId;
+      const str = typeof msg.data === 'string' ? msg.data : String(msg.data ?? '');
+      
+      // 使用消息中的 conversationId
+      const convId = msg.conversationId != null ? Number(msg.conversationId) : selectedConversationId;
+      
+      logger.log('[App] onA2AOutput: agentId=%s taskId=%s msgConvId=%s selectedConvId=%s convId=%s', 
+        msg.agentId, msg.taskId, msg.conversationId, selectedConversationId, convId);
+      
+      if (!convId) {
+        logger.warn('[App] onA2AOutput: convId is null, skipping');
+        return;
+      }
+      
+      // 检查 agent 是否存在
+      const agent = agents.find((a) => a.id === agentId);
+      if (!agent) {
+        logger.warn('[App] onA2AOutput: agent not found, agentId=%s agents=%o', agentId, agents.map(a => a.id));
+      }
+      
+      // 更新流式输出
+      setStreamingByConversation((prev) => {
+        const prevConv = prev[convId] || {};
+        const prevContent = prevConv[agentId] || '';
+        logger.log('[App] onA2AOutput: updating streaming, prevContent.length=%d newContent.length=%d', 
+          prevContent.length, (prevContent + str).length);
+        return {
+          ...prev,
+          [convId]: {
+            ...prevConv,
+            [agentId]: prevContent + str,
+          },
+        };
+      });
+      
+      // 更新 ref
+      if (!streamingRefByConversation.current[convId]) {
+        streamingRefByConversation.current[convId] = {};
+      }
+      streamingRefByConversation.current[convId][agentId] = 
+        (streamingRefByConversation.current[convId][agentId] || '') + str;
+      
+      // 设置活跃 Agent
+      setStreamingAgentIdByConversation((prev) => {
+        logger.log('[App] onA2AOutput: setting streamingAgentId for convId=%s to agentId=%s', convId, agentId);
+        return {
+          ...prev,
+          [convId]: agentId,
+        };
+      });
+    },
+    onA2AComplete(msg) {
+      const agentId = msg.agentId;
+      const convId = msg.conversationId != null ? Number(msg.conversationId) : selectedConversationId;
+      
+      logger.log('[App] onA2AComplete: taskId=%s status=%s agentId=%s convId=%s', msg.taskId, msg.status, agentId, convId);
+      
+      if (!convId || !agentId) return;
+      
+      // 获取该会话的流式内容
+      const convRef = streamingRefByConversation.current[convId] || {};
+      const content = convRef[agentId] || '';
+      
+      logger.log('[App] onA2AComplete: saving assistant message, content.length=%d conversationId=%d', 
+        content.length, convId);
+
+      const agent = agents.find((a) => a.id === agentId);
+      const agentName = agent?.name || 'Agent';
+
+      // 保存消息到对应会话
+      if (content.trim()) {
+        fetch(`${API}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: 'assistant',
+            content,
+            agent_id: agentId,
+            agent_name: agentName,
+            task_id: convId,
+          }),
+        }).catch((err) => {
+          logger.error('[App] onA2AComplete: failed to save assistant message:', err);
+        });
+      }
+      
+      // 清理该会话的流式状态
+      delete streamingRefByConversation.current[convId]?.[agentId];
+      
+      setStreamingByConversation((prev) => {
+        const prevConv = prev[convId] || {};
+        const { [agentId]: _, ...rest } = prevConv;
+        return {
+          ...prev,
+          [convId]: rest,
+        };
+      });
+      
+      setStreamingAgentIdByConversation((prev) => {
+        const prevAgent = prev[convId];
+        if (prevAgent === agentId) {
+          const { [convId]: _, ...rest } = prev;
+          return rest;
+        }
+        return prev;
+      });
+    },
   });
 
   const handleSendText = useCallback((agentId, text, conversationId) => {

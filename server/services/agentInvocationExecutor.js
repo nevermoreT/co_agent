@@ -65,45 +65,42 @@ export async function executeAgentInvocation(invocation, sendToClient) {
     // 4. 更新状态为 working
     a2aTaskManager.updateTaskStatus(task.id, 'working');
     
-    // 5. 构建上下文
-    const context = buildInvocationContext(invocation);
-    
-    // 6. 获取目标 Agent 信息
+    // 5. 获取目标 Agent 信息
     const targetAgent = db.prepare('SELECT * FROM agents WHERE id = ?').get(targetAgentId);
     
     if (!targetAgent) {
       throw new Error(`Target agent not found: ${targetAgentId}`);
     }
     
-    // 7. 执行目标 Agent
+    // 6. 执行目标 Agent（prompt 构建在 execute*Agent 内部）
     let accumulatedOutput = '';
     
     if (targetAgent.builtin_key === 'claude-cli') {
       await executeClaudeAgent(
         task,
         targetAgent,
-        context,
+        invocation,
         conversationId,
         (stream, data) => {
           accumulatedOutput += data;
-          handleAgentOutput(task.id, stream, data, targetAgentId, sendToClient);
+          handleAgentOutput(task.id, stream, data, targetAgentId, conversationId, sendToClient);
         },
         (code, signal) => {
-          handleAgentExit(task.id, code, signal, accumulatedOutput, sendToClient);
+          handleAgentExit(task.id, code, signal, accumulatedOutput, conversationId, targetAgentId, sendToClient);
         }
       );
     } else if (targetAgent.builtin_key === 'opencode-cli') {
       await executeOpencodeAgent(
         task,
         targetAgent,
-        context,
+        invocation,
         conversationId,
         (stream, data) => {
           accumulatedOutput += data;
-          handleAgentOutput(task.id, stream, data, targetAgentId, sendToClient);
+          handleAgentOutput(task.id, stream, data, targetAgentId, conversationId, sendToClient);
         },
         (code, signal) => {
-          handleAgentExit(task.id, code, signal, accumulatedOutput, sendToClient);
+          handleAgentExit(task.id, code, signal, accumulatedOutput, conversationId, targetAgentId, sendToClient);
         }
       );
     } else {
@@ -128,12 +125,15 @@ export async function executeAgentInvocation(invocation, sendToClient) {
 /**
  * 执行 Claude CLI Agent
  */
-async function executeClaudeAgent(task, agent, context, conversationId, onOutput, onExit) {
+async function executeClaudeAgent(task, agent, invocation, conversationId, onOutput, onExit) {
   logger.log('[AgentInvocationExecutor] Using Claude CLI for task %s', task.id);
+  
+  // 构建简单的 A2A prompt，复用 runClaudeCli 的 system prompt 和记忆上下文
+  const prompt = buildA2APrompt(invocation);
   
   await agentRunner.runClaudeCli(
     agent.id,
-    context.prompt,
+    prompt,
     onOutput,
     onExit,
     conversationId,
@@ -155,12 +155,15 @@ async function executeClaudeAgent(task, agent, context, conversationId, onOutput
 /**
  * 执行 Opencode CLI Agent
  */
-async function executeOpencodeAgent(task, agent, context, conversationId, onOutput, onExit) {
+async function executeOpencodeAgent(task, agent, invocation, conversationId, onOutput, onExit) {
   logger.log('[AgentInvocationExecutor] Using Opencode CLI for task %s', task.id);
+  
+  // 构建简单的 A2A prompt，复用 runOpencodeCli 的 system prompt 和记忆上下文
+  const prompt = buildA2APrompt(invocation);
   
   agentRunner.runOpencodeCli(
     agent.id,
-    context.prompt,
+    prompt,
     onOutput,
     onExit,
     conversationId,
@@ -180,9 +183,27 @@ async function executeOpencodeAgent(task, agent, context, conversationId, onOutp
 }
 
 /**
+ * 构建 A2A 调用 prompt
+ * 注意：Windows shell 模式下换行符会导致 prompt 被截断，需要替换为空格
+ */
+function buildA2APrompt(invocation) {
+  const { sourceAgentId, invocationText, fullOutput } = invocation;
+  
+  // 获取源 Agent 名称
+  const sourceAgent = db.prepare('SELECT name FROM agents WHERE id = ?').get(sourceAgentId);
+  const sourceName = sourceAgent?.name || 'Agent';
+  
+  // Windows shell 兼容：替换换行符为空格
+  const oneLineOutput = (fullOutput || '').replace(/\r?\n/g, ' ').replace(/\r/g, '');
+  const oneLineInvocation = (invocationText || '').replace(/\r?\n/g, ' ').replace(/\r/g, '');
+  
+  return `${sourceName} 的完整输出: ${oneLineOutput} --- 请处理: ${oneLineInvocation}`;
+}
+
+/**
  * 处理 Agent 输出
  */
-function handleAgentOutput(taskId, stream, data, agentId, sendToClient) {
+function handleAgentOutput(taskId, stream, data, agentId, conversationId, sendToClient) {
   // 1. 记录到 Task 历史
   a2aTaskManager.addTaskHistory(taskId, {
     role: 'agent',
@@ -199,6 +220,7 @@ function handleAgentOutput(taskId, stream, data, agentId, sendToClient) {
       stream,
       data,
       agentId,
+      conversationId,
     });
   }
 }
@@ -206,7 +228,7 @@ function handleAgentOutput(taskId, stream, data, agentId, sendToClient) {
 /**
  * 处理 Agent 退出
  */
-function handleAgentExit(taskId, code, signal, accumulatedOutput, sendToClient) {
+function handleAgentExit(taskId, code, signal, accumulatedOutput, conversationId, agentId, sendToClient) {
   const status = code === 0 ? 'completed' : 'failed';
   
   logger.log('[AgentInvocationExecutor] Task %s %s (code=%d)', taskId, status, code);
@@ -226,74 +248,10 @@ function handleAgentExit(taskId, code, signal, accumulatedOutput, sendToClient) 
       status,
       exitCode: code,
       signal,
+      conversationId,
+      agentId,
     });
   }
-}
-
-/**
- * 构建调用上下文
- */
-function buildInvocationContext(invocation) {
-  const { sourceAgentId, targetAgentId, invocationText, conversationId, fullOutput, matchIndex } = invocation;
-  
-  // 获取源 Agent 信息
-  const sourceAgent = db.prepare('SELECT name, role FROM agents WHERE id = ?').get(sourceAgentId);
-  
-  if (!sourceAgent) {
-    throw new Error(`Source agent not found: ${sourceAgentId}`);
-  }
-  
-  // 获取最近的消息历史（用于上下文）
-  const recentMessages = db.prepare(`
-    SELECT * FROM global_messages 
-    WHERE task_id = ? 
-    ORDER BY created_at DESC 
-    LIMIT 5
-  `).all(conversationId).reverse();
-  
-  // 构建对话历史摘要
-  const conversationSummary = recentMessages
-    .map(m => `${m.role === 'user' ? 'User' : m.agent_name || 'Agent'}: ${m.content?.substring(0, 100) || ''}`)
-    .join('\n');
-  
-  // 提取调用相关的上下文（@mention 前后的内容）
-  const contextStart = Math.max(0, matchIndex - 300);
-  const contextEnd = Math.min(fullOutput.length, matchIndex + invocationText.length + 200);
-  const relevantContext = fullOutput.slice(contextStart, contextEnd);
-  
-  // 构建系统提示
-  const systemPrompt = `你被另一个 Agent 调用。
-
-调用信息：
-- 来源 Agent: ${sourceAgent.name}${sourceAgent.role ? ` (${sourceAgent.role})` : ''}
-- 调用请求: ${invocationText}
-
-请专注于完成这个请求。完成后，系统会自动将结果返回给调用方。
-
-如果需要更多上下文信息，请主动询问。`;
-
-  // 构建用户提示
-  const userPrompt = `${sourceAgent.name} 的完整输出：
----
-${relevantContext}
----
-
-最近对话历史：
-${conversationSummary}
-
-${invocationText}`;
-  
-  return {
-    systemPrompt,
-    prompt: userPrompt,
-    context: {
-      sourceAgent: sourceAgent.name,
-      sourceAgentRole: sourceAgent.role,
-      invocationText,
-      relevantContext,
-      conversationSummary,
-    },
-  };
 }
 
 /**

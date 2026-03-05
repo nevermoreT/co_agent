@@ -41,11 +41,11 @@ function createThrottledOutput(send, agentId, delay = 80) {
 
 /**
  * 创建 Agent 调用检测器
- * 累积输出并在检测到调用意图时触发执行
+ * 累积输出，在 Agent 退出后检测并触发 A2A 调用
  */
 function createInvocationDetector(agentId, conversationId, send) {
   let outputBuffer = '';
-  let hasInvoked = false; // 防止重复调用
+  let pendingInvocation = null; // 检测到的调用意图
   
   return {
     process: (stream, data) => {
@@ -54,34 +54,40 @@ function createInvocationDetector(agentId, conversationId, send) {
         return;
       }
       
-      // 如果已经触发过调用，不再检测
-      if (hasInvoked) {
-        return;
-      }
-      
       // 累积输出
       outputBuffer += data;
       
-      // 检测调用意图
-      const invocation = detectAgentInvocation(agentId, outputBuffer, conversationId);
-      
-      if (invocation) {
-        logger.log('[websocket] Detected agent invocation: Agent %d -> Agent %d', 
-          agentId, invocation.targetAgentId);
-        
-        // 标记已调用
-        hasInvoked = true;
-        
-        // 异步执行调用（不阻塞当前输出）
+      // 如果还没检测到调用意图，继续检测
+      if (!pendingInvocation) {
+        const invocation = detectAgentInvocation(agentId, outputBuffer, conversationId);
+        if (invocation) {
+          logger.log('[websocket] Detected agent invocation intent: Agent %d -> Agent %d', 
+            agentId, invocation.targetAgentId);
+          pendingInvocation = invocation;
+        }
+      }
+    },
+    
+    // Agent 退出时调用，返回完整输出
+    onExit: () => {
+      // 如果有调用意图，用完整输出重新构建 invocation
+      if (pendingInvocation) {
+        // 用完整输出更新 invocation
+        const fullInvocation = {
+          ...pendingInvocation,
+          fullOutput: outputBuffer,
+        };
+        logger.log('[websocket] Executing A2A invocation with full output (%d chars)', outputBuffer.length);
         setImmediate(() => {
-          executeAgentInvocation(invocation, send);
+          executeAgentInvocation(fullInvocation, send);
         });
       }
+      return outputBuffer;
     },
     
     reset: () => {
       outputBuffer = '';
-      hasInvoked = false;
+      pendingInvocation = null;
     },
   };
 }
@@ -206,6 +212,8 @@ export function setupWebSocket(httpServer) {
                 throttled.flush();
                 logger.log('[claude-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
                 sendWithContext({ type: 'exit', agentId: id, code, signal });
+                // Agent 退出后检查并执行 A2A 调用
+                invocationDetector.onExit();
               };
               const ok = await agentRunner.runClaudeCli(id, text, onOutput, onExit, convId, onToolUse);
               if (!ok) {
@@ -253,6 +261,8 @@ export function setupWebSocket(httpServer) {
               throttled.flush();
               logger.log('[opencode-cli] exit agentId=%s code=%s signal=%s', id, code, signal);
               sendWithContext({ type: 'exit', agentId: id, code, signal });
+              // Agent 退出后检查并执行 A2A 调用
+              invocationDetector.onExit();
             };
             const ok = agentRunner.runOpencodeCli(id, text, onOutput, onExit, convId, onToolUse);
             if (!ok) {

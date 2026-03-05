@@ -11,14 +11,14 @@ const getWsUrl = () => {
 };
 
 export function useWs(options = {}) {
-  const { onOutput, onExit, onError, onToolUse } = options;
+  const { onOutput, onExit, onError, onToolUse, onA2AOutput, onA2AComplete, onA2AStart } = options;
   const [ready, setReady] = useState(false);
   const [runningAgentIds, setRunningAgentIds] = useState([]);
   const [lastError, setLastError] = useState(null);
   const wsRef = useRef(null);
   const reconnectRef = useRef(null);
-  const callbacksRef = useRef({ onOutput, onExit, onError, onToolUse });
-  callbacksRef.current = { onOutput, onExit, onError, onToolUse };
+  const callbacksRef = useRef({ onOutput, onExit, onError, onToolUse, onA2AOutput, onA2AComplete, onA2AStart });
+  callbacksRef.current = { onOutput, onExit, onError, onToolUse, onA2AOutput, onA2AComplete, onA2AStart };
 
   const connect = useCallback(() => {
     const url = getWsUrl();
@@ -77,6 +77,24 @@ export function useWs(options = {}) {
           logger.log('[useWs] error event:', msg.message, 'conversationId:', msgConversationId);
           setLastError(msg.message || 'Unknown error');
           callbacksRef.current.onError?.(msg, msgConversationId);
+        }
+        if (msg.type === 'a2a_invocation_start') {
+          logger.log('[useWs] a2a_invocation_start: taskId=%s targetAgentId=%s', msg.taskId, msg.targetAgentId);
+          setRunningAgentIds((prev) =>
+            prev.includes(msg.targetAgentId) ? prev : [...prev, msg.targetAgentId]
+          );
+          callbacksRef.current.onA2AStart?.(msg);
+        }
+        if (msg.type === 'a2a_output') {
+          logger.log('[useWs] a2a_output: taskId=%s agentId=%s conversationId=%s', msg.taskId, msg.agentId, msg.conversationId);
+          callbacksRef.current.onA2AOutput?.(msg);
+        }
+        if (msg.type === 'a2a_invocation_complete') {
+          logger.log('[useWs] a2a_invocation_complete: taskId=%s status=%s agentId=%s conversationId=%s', msg.taskId, msg.status, msg.agentId, msg.conversationId);
+          if (msg.agentId != null) {
+            setRunningAgentIds((prev) => prev.filter((id) => id !== msg.agentId));
+          }
+          callbacksRef.current.onA2AComplete?.(msg);
         }
       } catch (e) {
         logger.error('[useWs] failed to parse message:', e);
