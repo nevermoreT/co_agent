@@ -2,6 +2,7 @@ import { WebSocketServer } from 'ws';
 import * as agentRunner from './services/agentRunner.js';
 import { detectAgentInvocation } from './services/agentInvocationDetector.js';
 import { executeAgentInvocation } from './services/agentInvocationExecutor.js';
+import a2aTaskManager from './services/a2a/a2aTaskManager.js';
 import db from './db.js';
 import logger from './logger.js';
 
@@ -170,6 +171,11 @@ export function setupWebSocket(httpServer) {
         
         // 存储当前对话 ID 到 WebSocket 上下文
         wsContext.currentConversationId = convId;
+        
+        // 用户发新消息时重置 A2A 深度计数
+        if (convId) {
+          a2aTaskManager.clearSessionTasks(`conv-${convId}`);
+        }
         
         // 包装 send 函数，自动添加 conversationId
         const sendWithContext = (payload) => {

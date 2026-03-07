@@ -289,6 +289,28 @@ class A2ATaskManager {
   getActiveTaskIds() {
     return Array.from(this.activeTasks.keys());
   }
+  
+  /**
+   * 清除会话的 A2A 任务记录
+   * 当用户发起新消息时调用，重置 A2A 深度计数
+   */
+  clearSessionTasks(sessionId) {
+    try {
+      // 从内存中清除
+      for (const [taskId, task] of this.activeTasks) {
+        if (task.sessionId === sessionId) {
+          this.activeTasks.delete(taskId);
+        }
+      }
+      
+      // 从数据库中删除
+      db.prepare(`DELETE FROM a2a_tasks WHERE session_id = ?`).run(sessionId);
+      
+      logger.log('[A2ATaskManager] Cleared tasks for session: %s', sessionId);
+    } catch (error) {
+      logger.error('[A2ATaskManager] Error clearing session tasks:', error);
+    }
+  }
 }
 
 // 创建单例
