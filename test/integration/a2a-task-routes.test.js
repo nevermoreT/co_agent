@@ -35,10 +35,11 @@ describe('A2A Task Routes - Integration Tests', () => {
   });
 
   it('should get all agents', async () => {
+    // a2a.js (agents list) is mounted at /, so path is /agents not /a2a/agents
     const response = await request(app)
-      .get('/a2a/agents')
+      .get('/agents')
       .expect(200);
-    
+
     expect(response.body).toHaveProperty('agents');
     expect(Array.isArray(response.body.agents)).toBe(true);
   });

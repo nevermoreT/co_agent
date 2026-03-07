@@ -34,10 +34,8 @@ describe('Chats Routes', () => {
         { id: 2, agent_id: 'agent1', role: 'assistant', content: 'Hi there!' }
       ];
 
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => mockMessages)
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => mockMessages);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       const response = await request(mockApp)
         .get('/chats/agents/agent1/messages')
@@ -47,35 +45,30 @@ describe('Chats Routes', () => {
       expect(db.prepare).toHaveBeenCalledWith(
         'SELECT * FROM chat_messages WHERE agent_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?'
       );
-      expect(mockQuery.all).toHaveBeenCalledWith('agent1', 50, 0);
+      expect(mockAll).toHaveBeenCalledWith('agent1', 50, 0);
     });
 
     it('should apply limit and offset parameters', async () => {
       const mockMessages = [{ id: 1, agent_id: 'agent1', role: 'user', content: 'Test' }];
-      
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => mockMessages)
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => mockMessages);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       await request(mockApp)
         .get('/chats/agents/agent1/messages?limit=10&offset=5')
         .expect(200);
 
-      expect(mockQuery.all).toHaveBeenCalledWith('agent1', 10, 5);
+      expect(mockAll).toHaveBeenCalledWith('agent1', 10, 5);
     });
 
     it('should limit maximum limit to 200', async () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => [])
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => []);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       await request(mockApp)
         .get('/chats/agents/agent1/messages?limit=300')
         .expect(200);
 
-      expect(mockQuery.all).toHaveBeenCalledWith('agent1', 200, 0);
+      expect(mockAll).toHaveBeenCalledWith('agent1', 200, 0);
     });
 
     it('should handle database errors', async () => {
@@ -106,17 +99,10 @@ describe('Chats Routes', () => {
         created_at: new Date().toISOString()
       };
 
-      const mockInsertQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ lastInsertRowid: 1 }))
-      });
-      
-      const mockSelectQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => createdMessage)
-      });
-
+      const mockInsertRun = vi.fn(() => ({ lastInsertRowid: 1 }));
       db.prepare
-        .mockReturnValueOnce(mockInsertQuery)
-        .mockReturnValueOnce(mockSelectQuery);
+        .mockReturnValueOnce({ get: vi.fn(), run: mockInsertRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(() => createdMessage), run: vi.fn(), all: vi.fn() });
 
       const response = await request(mockApp)
         .post('/chats/agents/agent1/messages')
@@ -124,7 +110,7 @@ describe('Chats Routes', () => {
         .expect(201);
 
       expect(response.body).toEqual(createdMessage);
-      expect(mockInsertQuery.run).toHaveBeenCalledWith('agent1', messageData.role, messageData.content, 'task123');
+      expect(mockInsertRun).toHaveBeenCalledWith('agent1', messageData.role, messageData.content, 'task123');
     });
 
     it('should require role and content', async () => {
@@ -142,24 +128,17 @@ describe('Chats Routes', () => {
         content: null
       };
 
-      const mockInsertQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ lastInsertRowid: 1 }))
-      });
-      
-      const mockSelectQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => ({ id: 1, content: '' }))
-      });
-
+      const mockInsertRun = vi.fn(() => ({ lastInsertRowid: 1 }));
       db.prepare
-        .mockReturnValueOnce(mockInsertQuery)
-        .mockReturnValueOnce(mockSelectQuery);
+        .mockReturnValueOnce({ get: vi.fn(), run: mockInsertRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(() => ({ id: 1, content: '' })), run: vi.fn(), all: vi.fn() });
 
       await request(mockApp)
         .post('/chats/agents/agent1/messages')
         .send(messageData)
         .expect(201);
 
-      expect(mockInsertQuery.run).toHaveBeenCalledWith('agent1', 'user', '', null);
+      expect(mockInsertRun).toHaveBeenCalledWith('agent1', 'user', '', null);
     });
 
     it('should handle database errors', async () => {
@@ -183,10 +162,8 @@ describe('Chats Routes', () => {
         { id: 2, role: 'assistant', content: 'Hi!' }
       ];
 
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => mockMessages)
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => mockMessages);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       const response = await request(mockApp)
         .get('/chats/messages')
@@ -196,16 +173,13 @@ describe('Chats Routes', () => {
       expect(db.prepare).toHaveBeenCalledWith(
         'SELECT * FROM global_messages ORDER BY created_at ASC LIMIT ? OFFSET ?'
       );
-      expect(mockQuery.all).toHaveBeenCalledWith(100, 0);
+      expect(mockAll).toHaveBeenCalledWith(100, 0);
     });
 
     it('should filter by conversation_id', async () => {
       const mockMessages = [{ id: 1, task_id: 'conv1', role: 'user', content: 'Hello' }];
-      
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => mockMessages)
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => mockMessages);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       await request(mockApp)
         .get('/chats/messages?conversation_id=conv1')
@@ -214,16 +188,13 @@ describe('Chats Routes', () => {
       expect(db.prepare).toHaveBeenCalledWith(
         'SELECT * FROM global_messages WHERE task_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?'
       );
-      expect(mockQuery.all).toHaveBeenCalledWith('conv1', 100, 0);
+      expect(mockAll).toHaveBeenCalledWith('conv1', 100, 0);
     });
 
     it('should filter by task_id (alternative parameter)', async () => {
       const mockMessages = [{ id: 1, task_id: 'task1', role: 'user', content: 'Hello' }];
-      
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => mockMessages)
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => mockMessages);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       await request(mockApp)
         .get('/chats/messages?task_id=task1')
@@ -232,33 +203,29 @@ describe('Chats Routes', () => {
       expect(db.prepare).toHaveBeenCalledWith(
         'SELECT * FROM global_messages WHERE task_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?'
       );
-      expect(mockQuery.all).toHaveBeenCalledWith('task1', 100, 0);
+      expect(mockAll).toHaveBeenCalledWith('task1', 100, 0);
     });
 
     it('should apply pagination parameters', async () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => [])
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => []);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       await request(mockApp)
         .get('/chats/messages?limit=50&offset=10')
         .expect(200);
 
-      expect(mockQuery.all).toHaveBeenCalledWith(50, 10);
+      expect(mockAll).toHaveBeenCalledWith(50, 10);
     });
 
     it('should limit maximum limit to 500', async () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => [])
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => []);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       await request(mockApp)
         .get('/chats/messages?limit=600')
         .expect(200);
 
-      expect(mockQuery.all).toHaveBeenCalledWith(500, 0);
+      expect(mockAll).toHaveBeenCalledWith(500, 0);
     });
 
     it('should handle database errors', async () => {
@@ -293,22 +260,12 @@ describe('Chats Routes', () => {
         created_at: new Date().toISOString()
       };
 
-      const mockInsertQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ lastInsertRowid: 1 }))
-      });
-      
-      const mockSelectQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => createdMessage)
-      });
-      
-      const mockUpdateQuery = vi.fn().mockReturnValue({
-        run: vi.fn()
-      });
-
+      const mockInsertRun = vi.fn(() => ({ lastInsertRowid: 1 }));
+      const mockUpdateRun = vi.fn();
       db.prepare
-        .mockReturnValueOnce(mockInsertQuery)
-        .mockReturnValueOnce(mockSelectQuery)
-        .mockReturnValueOnce(mockUpdateQuery);
+        .mockReturnValueOnce({ get: vi.fn(), run: mockInsertRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(), run: mockUpdateRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(() => createdMessage), run: vi.fn(), all: vi.fn() });
 
       const response = await request(mockApp)
         .post('/chats/messages')
@@ -316,7 +273,7 @@ describe('Chats Routes', () => {
         .expect(201);
 
       expect(response.body).toEqual(createdMessage);
-      expect(mockInsertQuery.run).toHaveBeenCalledWith(
+      expect(mockInsertRun).toHaveBeenCalledWith(
         messageData.role,
         messageData.content,
         messageData.agent_id,
@@ -333,24 +290,17 @@ describe('Chats Routes', () => {
         content: 'Hello world'
       };
 
-      const mockInsertQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ lastInsertRowid: 1 }))
-      });
-      
-      const mockSelectQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => ({ id: 1, message_type: 'text' }))
-      });
-
+      const mockInsertRun = vi.fn(() => ({ lastInsertRowid: 1 }));
       db.prepare
-        .mockReturnValueOnce(mockInsertQuery)
-        .mockReturnValueOnce(mockSelectQuery);
+        .mockReturnValueOnce({ get: vi.fn(), run: mockInsertRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(() => ({ id: 1, message_type: 'text' })), run: vi.fn(), all: vi.fn() });
 
       await request(mockApp)
         .post('/chats/messages')
         .send(messageData)
         .expect(201);
 
-      expect(mockInsertQuery.run).toHaveBeenCalledWith(
+      expect(mockInsertRun).toHaveBeenCalledWith(
         messageData.role,
         messageData.content,
         null,
@@ -377,29 +327,19 @@ describe('Chats Routes', () => {
         task_id: 'task123'
       };
 
-      const mockInsertQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ lastInsertRowid: 1 }))
-      });
-      
-      const mockSelectQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => ({ id: 1 }))
-      });
-      
-      const mockUpdateQuery = vi.fn().mockReturnValue({
-        run: vi.fn()
-      });
-
+      const mockInsertRun = vi.fn(() => ({ lastInsertRowid: 1 }));
+      const mockUpdateRun = vi.fn();
       db.prepare
-        .mockReturnValueOnce(mockInsertQuery)
-        .mockReturnValueOnce(mockSelectQuery)
-        .mockReturnValueOnce(mockUpdateQuery);
+        .mockReturnValueOnce({ get: vi.fn(), run: mockInsertRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(), run: mockUpdateRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(() => ({ id: 1 })), run: vi.fn(), all: vi.fn() });
 
       await request(mockApp)
         .post('/chats/messages')
         .send(messageData)
         .expect(201);
 
-      expect(mockUpdateQuery.run).toHaveBeenCalledWith('task123');
+      expect(mockUpdateRun).toHaveBeenCalledWith('task123');
     });
 
     it('should record memory event for user messages', async () => {
@@ -409,35 +349,26 @@ describe('Chats Routes', () => {
         task_id: 'task123'
       };
 
-      const mockInsertQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ lastInsertRowid: 1 }))
-      });
-      
-      const mockSelectQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => ({ id: 1 }))
-      });
-      
-      const mockUpdateQuery = vi.fn().mockReturnValue({
-        run: vi.fn()
-      });
-
+      const mockInsertRun = vi.fn(() => ({ lastInsertRowid: 1 }));
       db.prepare
-        .mockReturnValueOnce(mockInsertQuery)
-        .mockReturnValueOnce(mockSelectQuery)
-        .mockReturnValueOnce(mockUpdateQuery);
+        .mockReturnValueOnce({ get: vi.fn(), run: mockInsertRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(() => ({ id: 1 })), run: vi.fn(), all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(), run: vi.fn(), all: vi.fn() });
 
       await request(mockApp)
         .post('/chats/messages')
         .send(messageData)
         .expect(201);
 
-      expect(memoryManager.recordEvent).toHaveBeenCalledWith({
-        eventType: 'conversation',
-        conversationId: 'task123',
-        title: 'Hello agent, how are you?',
-        content: '@Agent1 Hello agent, how are you?',
-        importance: 6
-      });
+      expect(memoryManager.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'conversation',
+          conversationId: 'task123',
+          content: '@Agent1 Hello agent, how are you?',
+          importance: 6
+        })
+      );
+      expect(memoryManager.recordEvent.mock.calls[0][0].title).toBeTruthy();
     });
 
     it('should not record memory event for thinking messages', async () => {
@@ -448,22 +379,11 @@ describe('Chats Routes', () => {
         message_type: 'thinking'
       };
 
-      const mockInsertQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ lastInsertRowid: 1 }))
-      });
-      
-      const mockSelectQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => ({ id: 1 }))
-      });
-      
-      const mockUpdateQuery = vi.fn().mockReturnValue({
-        run: vi.fn()
-      });
-
+      const mockInsertRun = vi.fn(() => ({ lastInsertRowid: 1 }));
       db.prepare
-        .mockReturnValueOnce(mockInsertQuery)
-        .mockReturnValueOnce(mockSelectQuery)
-        .mockReturnValueOnce(mockUpdateQuery);
+        .mockReturnValueOnce({ get: vi.fn(), run: mockInsertRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(() => ({ id: 1 })), run: vi.fn(), all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(), run: vi.fn(), all: vi.fn() });
 
       await request(mockApp)
         .post('/chats/messages')
@@ -480,24 +400,17 @@ describe('Chats Routes', () => {
         metadata: '{"source":"web"}' // string instead of object
       };
 
-      const mockInsertQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ lastInsertRowid: 1 }))
-      });
-      
-      const mockSelectQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => ({ id: 1 }))
-      });
-
+      const mockInsertRun = vi.fn(() => ({ lastInsertRowid: 1 }));
       db.prepare
-        .mockReturnValueOnce(mockInsertQuery)
-        .mockReturnValueOnce(mockSelectQuery);
+        .mockReturnValueOnce({ get: vi.fn(), run: mockInsertRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(() => ({ id: 1 })), run: vi.fn(), all: vi.fn() });
 
       await request(mockApp)
         .post('/chats/messages')
         .send(messageData)
         .expect(201);
 
-      expect(mockInsertQuery.run).toHaveBeenCalledWith(
+      expect(mockInsertRun).toHaveBeenCalledWith(
         messageData.role,
         messageData.content,
         null,

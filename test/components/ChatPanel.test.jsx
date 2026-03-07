@@ -31,27 +31,25 @@ vi.mock('../../client/hooks/useGlobalMessages', () => ({
   }),
 }));
 
-describe('ChatPanel 组件测试', () => {
-  const defaultProps = {
-    agents: mockAgents,
-    selectedTaskId: 1,
-    wsReady: true,
-    runningAgentIds: [],
-    streamingContent: '',
-    streamingAgentId: null,
-    currentConversation: { id: 1, title: 'Test Conversation', group_name: 'Test' },
-    messages: [
-      { id: 1, role: 'user', content: 'Hello', agent_id: null, agent_name: null },
-      { id: 2, role: 'assistant', content: 'Hi there!', agent_id: 1, agent_name: 'Claude CLI' },
-    ],
-    onStart: vi.fn(),
-    onStop: vi.fn(),
-    onSendText: vi.fn(),
-  };
+// Mock scrollIntoView for jsdom
+Element.prototype.scrollIntoView = vi.fn();
+
+describe('ChatPanel', () => {
+  let defaultProps;
 
   beforeEach(() => {
-    mockFetch.mockReset();
-    vi.clearAllMocks();
+    mockFetch.mockClear();
+    defaultProps = {
+      currentConversation: { id: 1, title: 'Test Conversation' },
+      selectedTaskId: 1,
+      agents: mockAgents,
+      wsReady: true,
+      runningAgentIds: [],
+      onSend: vi.fn(),
+      onStop: vi.fn(),
+      onStart: vi.fn(),
+      onSendText: vi.fn(),
+    };
   });
 
   describe('渲染测试', () => {
@@ -258,15 +256,21 @@ describe('ChatPanel 组件测试', () => {
         ok: true,
         json: () => Promise.resolve({ id: 3, role: 'user', content: '@Claude CLI Hello' }),
       });
-      
+
       const user = userEvent.setup();
       render(<ChatPanel {...defaultProps} />);
-      
+
       const input = screen.getByPlaceholderText('输入消息，使用 @AgentName 调用 Agent...');
-      
+
       await user.type(input, '@Claude CLI Hello');
       await user.type(input, '{enter}');
-      
+
+      // 先检查 fetch 是否被调用
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
+
+      // 然后检查 onStart 和 onSendText
       await waitFor(() => {
         expect(defaultProps.onStart).toHaveBeenCalledWith(1);
         expect(defaultProps.onSendText).toHaveBeenCalledWith(1, 'Hello', 1);

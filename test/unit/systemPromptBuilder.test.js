@@ -5,8 +5,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   sanitizeForShell,
-  containsSpecialChars
-  toOneLine
+  containsSpecialChars,
+  toOneLine,
   buildA2APromptForCLI
 } from '../../server/services/systemPromptBuilder.js';
 
@@ -18,12 +18,12 @@ describe('systemPromptBuilder', () => {
 
     it('should escape double quotes', () => {
       const result = sanitizeForShell('say "hello"');
-      expect(result).toBe('"say \\"hello\')
+      expect(result).toBe('"say \\"hello\\""');
     });
 
     it('should escape double quotes', () => {
       const result = sanitizeForShell('say "hello"');
-      expect(result).toBe('"say \\"hello\')
+      expect(result).toBe('"say \\"hello\\""');
     });
 
     it('should return empty quoted string for null/undefined', () => {
@@ -67,18 +67,18 @@ describe('systemPromptBuilder', () => {
 
   describe('toOneLine', () => {
     it('should replace newlines with spaces', () => {
-      expect(toOneLine('hello\nworld')).toBe('hello world')
-      expect(toOneLine('test\nt\ntest')).toBe('test test')
+      expect(toOneLine('hello\nworld')).toBe('hello world');
+      expect(toOneLine('test\nline\ntest')).toBe('test line test');
     });
 
     it('should handle empty string', () => {
-      expect(toOneLine('')).toBe('')
-    }
+      expect(toOneLine('')).toBe('');
+    });
 
     it('should handle null/undefined', () => {
-      expect(toOneLine(null)).toBe('')
-      expect(toOneLine(undefined)).toBe('')
-    }
+      expect(toOneLine(null)).toBe('');
+      expect(toOneLine(undefined)).toBe('');
+    });
   });
 
   describe('buildA2APromptForCLI', () => {
@@ -87,30 +87,30 @@ describe('systemPromptBuilder', () => {
         sourceAgentId: 1,
         invocationText: 'please help',
         fullOutput: 'This is the output',
-      }
-      
-      const result = buildA2APromptForCLI(invocation)
-      
-      expect(result).toContain('[A2A_CONTEXT]')
-      expect(result).toContain('来源 Agent:')
-      expect(result).toContain('请求: please help')
-      expect(result).toContain('完整输出:')
-      expect(result).toContain('This is the output')
-      expect(result).not.toContain('\n') // 换行符已替换
-    })
+      };
+
+      const result = buildA2APromptForCLI(invocation);
+
+      // 新格式：{sourceName} 的完整输出: {output} --- 请处理: {invocation}
+      expect(result).toContain('的完整输出:');
+      expect(result).toContain('请处理:');
+      expect(result).toContain('please help');
+      expect(result).toContain('This is the output');
+      expect(result).not.toContain('\n'); // 换行符已替换
+    });
 
     it('should convert multi-line output to single line', () => {
       const invocation = {
         sourceAgentId: 1,
         invocationText: 'help',
         fullOutput: 'line1\nline2\nline3',
-      }
-      
-      const result = buildA2APromptForCLI(invocation)
-      
-      expect(result).not.toContain('\n')
-      expect(result).toContain('line1 line2 line3')
-      expect(result).toContain('help')
+      };
+
+      const result = buildA2APromptForCLI(invocation);
+
+      expect(result).not.toContain('\n');
+      expect(result).toContain('line1 line2 line3');
+      expect(result).toContain('help');
     })
   });
 });

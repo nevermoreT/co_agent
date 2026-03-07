@@ -4,7 +4,7 @@ Guidelines for agentic coding agents working in this repository.
 
 ## Project Overview
 
-Multi-agent collaboration platform with Node.js (Express + WebSocket) backend and React (Vite) frontend. Manages CLI-based agent processes with WebSocket streaming. Features unified chat with @mention support.
+Multi-agent collaboration platform with Node.js (Express + WebSocket) backend and React (Vite) frontend. Manages CLI-based agent processes with WebSocket streaming. Features unified chat with @mention support and Agent-to-Agent (A2A) invocation.
 
 ## Commands
 
@@ -13,15 +13,21 @@ npm install                 # Install dependencies
 npm run dev                 # Development (server + client with hot reload)
 npm run server              # Server only (port 3000)
 npm run client              # Client only (port 5173)
+
+# Testing
 npm run test:run            # Run all tests once
 npm test                    # Run tests in watch mode
 npm run test:coverage       # Run with coverage
 npx vitest run test/unit/minimal-claude.test.js  # Single test file
 npx vitest run -t "parseCommand"                 # Pattern matching
 npx vitest run test/hooks/                       # Specific directory
+
+# Linting
 npm run lint                # Run ESLint
 npm run lint:fix            # Auto-fix issues
-npm run build && npm run server  # Production build
+
+# Production
+npm run build && npm run server
 ```
 
 ## Code Style
@@ -41,7 +47,7 @@ npm run build && npm run server  # Production build
 | Components | PascalCase | `ChatPanel` |
 | Hooks | use-prefix | `useAgents()` |
 | Constants | SCREAMING_SNAKE_CASE | `MAX_AGENTS` |
-| CSS | kebab-case | `chat-panel` |
+| CSS classes | kebab-case | `chat-panel` |
 | DB Tables | snake_case | `global_messages` |
 
 ### Exports
@@ -102,22 +108,19 @@ co_agent/
 └── minimal-opencode.js  # Opencode CLI wrapper
 ```
 
-### Chat System
-
-- All messages in `global_messages` table
-- `@AgentName message` to target (supports spaces)
-- No @ prefix = regular message
-
 ### WebSocket Protocol
 
 **Client → Server:** `{ action, agentId, text, conversationId }`  
 Actions: `start`, `send`, `stop`, `status`
 
 **Server → Client:**
-- `{ type: 'output', agentId, stream, data }`
+- `{ type: 'output', agentId, stream, data, conversationId }`
 - `{ type: 'tool_use', agentId, tool, title, status, input, output, callID }`
-- `{ type: 'exit', agentId, code, signal }`
+- `{ type: 'exit', agentId, code, signal, conversationId }`
 - `{ type: 'error', agentId, message }`
+- `{ type: 'a2a_output', agentId, taskId, data, conversationId }`
+- `{ type: 'a2a_invocation_start', targetAgentId, taskId }`
+- `{ type: 'a2a_invocation_complete', agentId, taskId, status }`
 
 ### Database
 
@@ -141,8 +144,8 @@ Actions: `start`, `send`, `stop`, `status`
 ### Windows Compatibility
 
 - `shell: true` with `spawn()`
-- Replace `\n` with spaces in prompts
-- Avoid `<>` (use `[SYSTEM_CONTEXT]`)
+- Replace `\n` with spaces in prompts sent to CLI
+- Avoid `<>` in prompts (use `[CONTEXT]` instead)
 
 ## Constraints
 
@@ -150,7 +153,7 @@ Actions: `start`, `send`, `stop`, `status`
 - WebSocket path: `/ws`
 - Server: 3000 (PORT env)
 - Client: 5173
-- Tests: single-threaded, jsdom
+- Tests: single-threaded (`threads: false` in vitest.config.js), jsdom
 
 ## Before Commit
 

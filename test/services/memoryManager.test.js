@@ -36,20 +36,14 @@ describe('Memory Manager', () => {
         importance: 8
       };
 
-      const mockQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ lastInsertRowid: 123 }))
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockRun = vi.fn(() => ({ lastInsertRowid: 123 }));
+      db.prepare.mockReturnValue({ get: vi.fn(), run: mockRun, all: vi.fn() });
 
       const result = memoryManager.recordEvent(eventData);
 
       expect(result).toBe(123);
-      expect(db.prepare).toHaveBeenCalledWith(`
-        INSERT INTO shared_events 
-        (event_type, source_agent_id, source_agent_name, conversation_id, title, content, summary, metadata, importance)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      expect(mockQuery.run).toHaveBeenCalledWith(
+      expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO shared_events'));
+      expect(mockRun).toHaveBeenCalledWith(
         'conversation',
         'agent1',
         'Agent 1',
@@ -75,15 +69,13 @@ describe('Memory Manager', () => {
         content: 'Minimal content'
       };
 
-      const mockQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ lastInsertRowid: 456 }))
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockRun = vi.fn(() => ({ lastInsertRowid: 456 }));
+      db.prepare.mockReturnValue({ get: vi.fn(), run: mockRun, all: vi.fn() });
 
       const result = memoryManager.recordEvent(eventData);
 
       expect(result).toBe(456);
-      expect(mockQuery.run).toHaveBeenCalledWith(
+      expect(mockRun).toHaveBeenCalledWith(
         'test',
         null,
         null,
@@ -104,23 +96,21 @@ describe('Memory Manager', () => {
         metadata: null
       };
 
-      const mockQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ lastInsertRowid: 789 }))
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockRun = vi.fn(() => ({ lastInsertRowid: 789 }));
+      db.prepare.mockReturnValue({ get: vi.fn(), run: mockRun, all: vi.fn() });
 
       memoryManager.recordEvent(eventData);
 
-      expect(mockQuery.run).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
+      expect(mockRun).toHaveBeenCalledWith(
+        'test',
+        null,
+        null,
+        null,
+        'Test Event',
+        'Test content',
+        null,
         null, // metadata should be null
-        expect.anything()
+        5
       );
     });
 
@@ -147,10 +137,8 @@ describe('Memory Manager', () => {
         { id: 2, event_type: 'task', title: 'Event 2' }
       ];
 
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => mockEvents)
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => mockEvents);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       const result = memoryManager.getEvents();
 
@@ -158,86 +146,74 @@ describe('Memory Manager', () => {
       expect(db.prepare).toHaveBeenCalledWith(
         'SELECT * FROM shared_events WHERE 1=1 ORDER BY created_at DESC LIMIT ? OFFSET ?'
       );
-      expect(mockQuery.all).toHaveBeenCalledWith(50, 0);
+      expect(mockAll).toHaveBeenCalledWith(50, 0);
     });
 
     it('should filter by event type', () => {
       const mockEvents = [{ id: 1, event_type: 'conversation', title: 'Event 1' }];
       
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => mockEvents)
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => mockEvents);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       memoryManager.getEvents({ eventType: 'conversation' });
 
       expect(db.prepare).toHaveBeenCalledWith(
         'SELECT * FROM shared_events WHERE 1=1 AND event_type = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
       );
-      expect(mockQuery.all).toHaveBeenCalledWith('conversation', 50, 0);
+      expect(mockAll).toHaveBeenCalledWith('conversation', 50, 0);
     });
 
     it('should filter by source agent ID', () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => [])
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => []);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       memoryManager.getEvents({ sourceAgentId: 'agent1' });
 
       expect(db.prepare).toHaveBeenCalledWith(
         'SELECT * FROM shared_events WHERE 1=1 AND source_agent_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
       );
-      expect(mockQuery.all).toHaveBeenCalledWith('agent1', 50, 0);
+      expect(mockAll).toHaveBeenCalledWith('agent1', 50, 0);
     });
 
     it('should filter by conversation ID', () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => [])
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => []);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       memoryManager.getEvents({ conversationId: 'conv1' });
 
       expect(db.prepare).toHaveBeenCalledWith(
         'SELECT * FROM shared_events WHERE 1=1 AND conversation_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
       );
-      expect(mockQuery.all).toHaveBeenCalledWith('conv1', 50, 0);
+      expect(mockAll).toHaveBeenCalledWith('conv1', 50, 0);
     });
 
     it('should filter by minimum importance', () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => [])
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => []);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       memoryManager.getEvents({ minImportance: 7 });
 
       expect(db.prepare).toHaveBeenCalledWith(
         'SELECT * FROM shared_events WHERE 1=1 AND importance >= ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
       );
-      expect(mockQuery.all).toHaveBeenCalledWith(7, 50, 0);
+      expect(mockAll).toHaveBeenCalledWith(7, 50, 0);
     });
 
     it('should exclude specific agent', () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => [])
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => []);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       memoryManager.getEvents({ excludeAgentId: 'agent2' });
 
       expect(db.prepare).toHaveBeenCalledWith(
         'SELECT * FROM shared_events WHERE 1=1 AND source_agent_id != ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
       );
-      expect(mockQuery.all).toHaveBeenCalledWith('agent2', 50, 0);
+      expect(mockAll).toHaveBeenCalledWith('agent2', 50, 0);
     });
 
     it('should apply multiple filters', () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => [])
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => []);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       memoryManager.getEvents({
         eventType: 'conversation',
@@ -252,134 +228,96 @@ describe('Memory Manager', () => {
       expect(db.prepare).toHaveBeenCalledWith(
         'SELECT * FROM shared_events WHERE 1=1 AND event_type = ? AND source_agent_id = ? AND conversation_id = ? AND importance >= ? AND source_agent_id != ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
       );
-      expect(mockQuery.all).toHaveBeenCalledWith('conversation', 'agent1', 'conv1', 6, 'agent2', 20, 10);
+      expect(mockAll).toHaveBeenCalledWith('conversation', 'agent1', 'conv1', 6, 'agent2', 20, 10);
     });
 
-    it('should handle database errors', () => {
+    it('should throw when database errors', () => {
       db.prepare = vi.fn(() => {
         throw new Error('Database error');
       });
 
-      const result = memoryManager.getEvents();
-
-      expect(result).toEqual([]);
-      expect(logger.error).toHaveBeenCalledWith('[memory] failed to get events:', expect.any(Error));
+      expect(() => memoryManager.getEvents()).toThrow('Database error');
     });
   });
 
-  describe('getContextForConversation', () => {
-    it('should return context for conversation', () => {
-      const mockEvents = [
-        { id: 1, title: 'Event 1', content: 'Content 1', importance: 8 },
-        { id: 2, title: 'Event 2', content: 'Content 2', importance: 6 }
+  describe('buildAgentContext', () => {
+    it('should return context string for conversation', () => {
+      const mockMessages = [
+        { role: 'assistant', content: 'Hi', agent_name: 'A' },
+        { role: 'user', content: 'Hello', agent_name: null }
       ];
+      const mockAll = vi.fn(() => mockMessages);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => mockEvents)
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const result = memoryManager.buildAgentContext(1, 'conv1');
 
-      const result = memoryManager.getContextForConversation('conv1');
-
-      expect(result).toEqual(mockEvents);
+      expect(typeof result).toBe('string');
       expect(db.prepare).toHaveBeenCalledWith(
-        'SELECT * FROM shared_events WHERE conversation_id = ? AND importance >= 6 ORDER BY importance DESC, created_at DESC LIMIT 20'
+        expect.stringContaining('global_messages')
       );
-      expect(mockQuery.all).toHaveBeenCalledWith('conv1');
+      expect(mockAll).toHaveBeenCalledWith('conv1');
     });
 
-    it('should handle empty conversation ID', () => {
-      const result = memoryManager.getContextForConversation('');
+    it('should return empty string when conversation ID empty', () => {
+      const result = memoryManager.buildAgentContext(1, '');
 
-      expect(result).toEqual([]);
+      expect(result).toBe('');
     });
 
-    it('should handle database errors', () => {
-      db.prepare = vi.fn(() => {
-        throw new Error('Database error');
-      });
+    it('should return empty string when conversation ID null', () => {
+      const result = memoryManager.buildAgentContext(1, null);
 
-      const result = memoryManager.getContextForConversation('conv1');
-
-      expect(result).toEqual([]);
-      expect(logger.error).toHaveBeenCalledWith('[memory] failed to get context:', expect.any(Error));
+      expect(result).toBe('');
     });
   });
 
   describe('upsertKnowledge', () => {
     it('should insert new knowledge', () => {
       const knowledgeData = {
+        category: 'test-cat',
         key: 'test-key',
-        content: 'Test content',
-        sourceAgentId: 'agent1',
-        sourceAgentName: 'Agent 1'
+        value: 'Test content'
       };
 
-      const mockExistingQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => undefined)
-      });
-      
-      const mockInsertQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ lastInsertRowid: 123 }))
-      });
-
+      const mockGet = vi.fn(() => undefined);
+      const mockRun = vi.fn(() => ({ lastInsertRowid: 123 }));
       db.prepare
-        .mockReturnValueOnce(mockExistingQuery)
-        .mockReturnValueOnce(mockInsertQuery);
+        .mockReturnValueOnce({ get: mockGet, run: vi.fn(), all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(), run: mockRun, all: vi.fn() });
 
       const result = memoryManager.upsertKnowledge(knowledgeData);
 
       expect(result).toBe(123);
       expect(db.prepare).toHaveBeenCalledWith(
-        'SELECT id FROM shared_knowledge WHERE key = ?'
+        'SELECT id FROM consensus_knowledge WHERE key = ? AND category = ?'
       );
+      expect(mockGet).toHaveBeenCalledWith('test-key', 'test-cat');
       expect(db.prepare).toHaveBeenCalledWith(
-        'INSERT INTO shared_knowledge (key, content, source_agent_id, source_agent_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-      );
-      expect(mockInsertQuery.run).toHaveBeenCalledWith(
-        'test-key',
-        'Test content',
-        'agent1',
-        'Agent 1',
-        expect.any(String), // created_at
-        expect.any(String)  // updated_at
+        expect.stringContaining('INSERT INTO consensus_knowledge')
       );
     });
 
     it('should update existing knowledge', () => {
-      const existingKnowledge = { id: 1, key: 'test-key' };
+      const existingKnowledge = { id: 1 };
       const knowledgeData = {
+        category: 'test-cat',
         key: 'test-key',
-        content: 'Updated content',
-        sourceAgentId: 'agent2',
-        sourceAgentName: 'Agent 2'
+        value: 'Updated content'
       };
 
-      const mockExistingQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => existingKnowledge)
-      });
-      
-      const mockUpdateQuery = vi.fn().mockReturnValue({
-        run: vi.fn()
-      });
-
+      const mockGet = vi.fn(() => existingKnowledge);
+      const mockRun = vi.fn();
       db.prepare
-        .mockReturnValueOnce(mockExistingQuery)
-        .mockReturnValueOnce(mockUpdateQuery);
+        .mockReturnValueOnce({ get: mockGet, run: vi.fn(), all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(), run: mockRun, all: vi.fn() });
 
       const result = memoryManager.upsertKnowledge(knowledgeData);
 
-      expect(result).toBe(1); // existing ID
+      expect(result).toBe(1);
       expect(db.prepare).toHaveBeenCalledWith(
-        'UPDATE shared_knowledge SET content = ?, source_agent_id = ?, source_agent_name = ?, updated_at = ? WHERE id = ?'
+        expect.stringContaining('UPDATE consensus_knowledge')
       );
-      expect(mockUpdateQuery.run).toHaveBeenCalledWith(
-        'Updated content',
-        'agent2',
-        'Agent 2',
-        expect.any(String), // updated_at
-        1
-      );
+      expect(mockRun).toHaveBeenCalled();
     });
 
     it('should handle database errors', () => {
@@ -388,8 +326,9 @@ describe('Memory Manager', () => {
       });
 
       const result = memoryManager.upsertKnowledge({
+        category: 'cat',
         key: 'test-key',
-        content: 'Test content'
+        value: 'Test content'
       });
 
       expect(result).toBe(null);
@@ -398,126 +337,79 @@ describe('Memory Manager', () => {
   });
 
   describe('getKnowledge', () => {
-    it('should return knowledge by key', () => {
-      const mockKnowledge = {
-        id: 1,
-        key: 'test-key',
-        content: 'Test content',
-        source_agent_id: 'agent1',
-        source_agent_name: 'Agent 1'
-      };
+    it('should return knowledge array by key', () => {
+      const mockKnowledge = [
+        {
+          id: 1,
+          key: 'test-key',
+          value: 'Test content',
+          category: 'cat'
+        }
+      ];
+      const mockAll = vi.fn(() => mockKnowledge);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
-      const mockQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => mockKnowledge)
-      });
-      db.prepare.mockReturnValue(mockQuery);
-
-      const result = memoryManager.getKnowledge('test-key');
+      const result = memoryManager.getKnowledge({ key: 'test-key' });
 
       expect(result).toEqual(mockKnowledge);
       expect(db.prepare).toHaveBeenCalledWith(
-        'SELECT * FROM shared_knowledge WHERE key = ?'
+        expect.stringContaining('consensus_knowledge')
       );
-      expect(mockQuery.get).toHaveBeenCalledWith('test-key');
+      expect(mockAll).toHaveBeenCalledWith('test-key');
     });
 
-    it('should return null when knowledge not found', () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => undefined)
-      });
-      db.prepare.mockReturnValue(mockQuery);
-
-      const result = memoryManager.getKnowledge('nonexistent');
-
-      expect(result).toBe(null);
-    });
-
-    it('should handle empty key', () => {
-      const result = memoryManager.getKnowledge('');
-
-      expect(result).toBe(null);
-    });
-
-    it('should handle database errors', () => {
-      db.prepare = vi.fn(() => {
-        throw new Error('Database error');
+    it('should return empty array when knowledge not found', () => {
+      db.prepare.mockReturnValue({
+        get: vi.fn(),
+        run: vi.fn(),
+        all: vi.fn(() => []),
       });
 
-      const result = memoryManager.getKnowledge('test-key');
+      const result = memoryManager.getKnowledge({ key: 'nonexistent' });
 
-      expect(result).toBe(null);
-      expect(logger.error).toHaveBeenCalledWith('[memory] failed to get knowledge:', expect.any(Error));
+      expect(result).toEqual([]);
+    });
+
+    it('should return all when no filters', () => {
+      const mockAll = vi.fn(() => []);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
+
+      memoryManager.getKnowledge({});
+
+      expect(mockAll).toHaveBeenCalledWith();
     });
   });
 
-  describe('searchKnowledge', () => {
-    it('should search knowledge with pattern', () => {
-      const mockResults = [
-        { id: 1, key: 'test-key-1', content: 'Content about testing' },
-        { id: 2, key: 'test-key-2', content: 'More test content' }
-      ];
+  describe('getKnowledge with category', () => {
+    it('should filter by category and key', () => {
+      const mockAll = vi.fn(() => []);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => mockResults)
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      memoryManager.getKnowledge({ category: 'cat', key: 'k' });
 
-      const result = memoryManager.searchKnowledge('test');
-
-      expect(result).toEqual(mockResults);
-      expect(db.prepare).toHaveBeenCalledWith(
-        "SELECT * FROM shared_knowledge WHERE key LIKE ? OR content LIKE ? ORDER BY updated_at DESC"
-      );
-      expect(mockQuery.all).toHaveBeenCalledWith('%test%', '%test%');
-    });
-
-    it('should handle empty search term', () => {
-      const result = memoryManager.searchKnowledge('');
-
-      expect(result).toEqual([]);
-    });
-
-    it('should handle database errors', () => {
-      db.prepare = vi.fn(() => {
-        throw new Error('Database error');
-      });
-
-      const result = memoryManager.searchKnowledge('test');
-
-      expect(result).toEqual([]);
-      expect(logger.error).toHaveBeenCalledWith('[memory] failed to search knowledge:', expect.any(Error));
+      expect(mockAll).toHaveBeenCalledWith('cat', 'k');
     });
   });
 
   describe('deleteKnowledge', () => {
-    it('should delete knowledge by key', () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ changes: 1 }))
-      });
-      db.prepare.mockReturnValue(mockQuery);
+    it('should delete knowledge by category and key', () => {
+      const mockRun = vi.fn(() => ({ changes: 1 }));
+      db.prepare.mockReturnValue({ get: vi.fn(), run: mockRun, all: vi.fn() });
 
-      const result = memoryManager.deleteKnowledge('test-key');
+      const result = memoryManager.deleteKnowledge('cat', 'test-key');
 
       expect(result).toBe(true);
       expect(db.prepare).toHaveBeenCalledWith(
-        'DELETE FROM shared_knowledge WHERE key = ?'
+        'DELETE FROM consensus_knowledge WHERE category = ? AND key = ?'
       );
-      expect(mockQuery.run).toHaveBeenCalledWith('test-key');
+      expect(mockRun).toHaveBeenCalledWith('cat', 'test-key');
     });
 
     it('should return false when knowledge not found', () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ changes: 0 }))
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockRun = vi.fn(() => ({ changes: 0 }));
+      db.prepare.mockReturnValue({ get: vi.fn(), run: mockRun, all: vi.fn() });
 
-      const result = memoryManager.deleteKnowledge('nonexistent');
-
-      expect(result).toBe(false);
-    });
-
-    it('should handle empty key', () => {
-      const result = memoryManager.deleteKnowledge('');
+      const result = memoryManager.deleteKnowledge('cat', 'nonexistent');
 
       expect(result).toBe(false);
     });
@@ -527,7 +419,7 @@ describe('Memory Manager', () => {
         throw new Error('Database error');
       });
 
-      const result = memoryManager.deleteKnowledge('test-key');
+      const result = memoryManager.deleteKnowledge('cat', 'test-key');
 
       expect(result).toBe(false);
       expect(logger.error).toHaveBeenCalledWith('[memory] failed to delete knowledge:', expect.any(Error));

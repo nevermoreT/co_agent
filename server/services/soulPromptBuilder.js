@@ -45,7 +45,7 @@ export function buildSoulSystemPrompt(agent) {
 /**
  * 构建团队介绍 - 让 Agent 知道团队中有哪些其他成员
  */
-function buildTeamIntroduction(currentAgentId) {
+export function buildTeamIntroduction(currentAgentId) {
   const agents = db.prepare('SELECT id, name, role FROM agents WHERE id != ?').all(currentAgentId);
   
   if (!agents || agents.length === 0) {

@@ -2,8 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useWs } from '../../client/hooks/useWs.js';
 
-// Mock WebSocket
+// Mock WebSocket (must expose OPEN so hook's readyState === WebSocket.OPEN works)
 class MockWebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
   static readyStates = {
     CONNECTING: 0,
     OPEN: 1,
@@ -13,7 +17,7 @@ class MockWebSocket {
 
   constructor(url) {
     this.url = url;
-    this.readyState = MockWebSocket.readyStates.CONNECTING;
+    this.readyState = MockWebSocket.CONNECTING;
     this.onopen = null;
     this.onclose = null;
     this.onerror = null;
@@ -22,7 +26,7 @@ class MockWebSocket {
     
     // Simulate connection
     setTimeout(() => {
-      this.readyState = MockWebSocket.readyStates.OPEN;
+      this.readyState = MockWebSocket.OPEN;
       this.onopen?.();
     }, 0);
   }
@@ -32,7 +36,7 @@ class MockWebSocket {
   }
 
   close() {
-    this.readyState = MockWebSocket.readyStates.CLOSED;
+    this.readyState = MockWebSocket.CLOSED;
     this.onclose?.();
   }
 
@@ -46,7 +50,7 @@ class MockWebSocket {
   }
 
   simulateClose() {
-    this.readyState = MockWebSocket.readyStates.CLOSED;
+    this.readyState = MockWebSocket.CLOSED;
     this.onclose?.();
   }
 }
@@ -74,12 +78,17 @@ describe('useWs Hook', () => {
   let originalWebSocket;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     originalWebSocket = global.WebSocket;
     global.WebSocket = MockWebSocket;
     vi.clearAllMocks();
+    window.location.port = '5173';
+    window.location.protocol = 'http:';
+    window.location.host = 'localhost:5173';
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     global.WebSocket = originalWebSocket;
   });
 
@@ -88,8 +97,7 @@ describe('useWs Hook', () => {
       const { result } = renderHook(() => useWs());
 
       expect(result.current.ready).toBe(false);
-      
-      // Wait for connection
+
       act(() => {
         vi.advanceTimersByTime(0);
       });
@@ -100,8 +108,12 @@ describe('useWs Hook', () => {
 
     it('should construct correct WebSocket URL for development port', () => {
       window.location.port = '5173';
-      
+      window.location.host = 'localhost:5173';
+
       const { result } = renderHook(() => useWs());
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
 
       expect(result.current.ws.url).toBe('ws://localhost:3000/ws');
     });
@@ -110,8 +122,11 @@ describe('useWs Hook', () => {
       window.location.port = '80';
       window.location.protocol = 'https:';
       window.location.host = 'example.com:80';
-      
+
       const { result } = renderHook(() => useWs());
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
 
       expect(result.current.ws.url).toBe('wss://example.com:80/ws');
     });
@@ -151,14 +166,15 @@ describe('useWs Hook', () => {
       expect(result.current.ready).toBe(false);
       expect(result.current.runningAgentIds).toEqual([]);
 
-      // Should attempt reconnection after 2 seconds
+      // Reconnection after 2s creates new WebSocket; its onopen runs on next tick
       act(() => {
         vi.advanceTimersByTime(2000);
       });
+      act(() => {
+        vi.runAllTimers();
+      });
 
       expect(result.current.ready).toBe(true);
-      
-      vi.useRealTimers();
     });
   });
 
@@ -248,10 +264,8 @@ describe('useWs Hook', () => {
     });
 
     it('should handle output messages', () => {
-      const { result } = renderHook(() => useWs());
       const onOutput = vi.fn();
-
-      renderHook(() => useWs({ onOutput }));
+      const { result } = renderHook(() => useWs({ onOutput }));
 
       act(() => {
         vi.advanceTimersByTime(0);
@@ -272,10 +286,8 @@ describe('useWs Hook', () => {
     });
 
     it('should handle tool_use messages', () => {
-      const { result } = renderHook(() => useWs());
       const onToolUse = vi.fn();
-
-      renderHook(() => useWs({ onToolUse }));
+      const { result } = renderHook(() => useWs({ onToolUse }));
 
       act(() => {
         vi.advanceTimersByTime(0);
@@ -307,10 +319,8 @@ describe('useWs Hook', () => {
     });
 
     it('should handle error messages', () => {
-      const { result } = renderHook(() => useWs());
       const onError = vi.fn();
-
-      renderHook(() => useWs({ onError }));
+      const { result } = renderHook(() => useWs({ onError }));
 
       act(() => {
         vi.advanceTimersByTime(0);
@@ -344,10 +354,8 @@ describe('useWs Hook', () => {
     });
 
     it('should extract conversationId from messages', () => {
-      const { result } = renderHook(() => useWs());
       const onOutput = vi.fn();
-
-      renderHook(() => useWs({ onOutput }));
+      const { result } = renderHook(() => useWs({ onOutput }));
 
       act(() => {
         vi.advanceTimersByTime(0);
@@ -377,26 +385,27 @@ describe('useWs Hook', () => {
         vi.advanceTimersByTime(0);
       });
 
-      const payload = { action: 'test', data: 'example' };
-
       act(() => {
-        result.current.send(payload);
+        result.current.sendText('agent1', 'example', null);
       });
 
-      expect(result.current.ws.sentMessages).toContain(JSON.stringify(payload));
+      expect(result.current.ws.sentMessages).toContain(
+        JSON.stringify({ action: 'send', agentId: 'agent1', text: 'example', conversationId: null })
+      );
     });
 
     it('should not send messages when not ready', () => {
       const { result } = renderHook(() => useWs());
 
-      // Don't wait for connection
-      const payload = { action: 'test', data: 'example' };
-
+      // Don't advance timers - connection not open yet
       act(() => {
-        result.current.send(payload);
+        result.current.sendText('agent1', 'example', null);
       });
 
-      expect(result.current.ws.sentMessages).not.toContain(JSON.stringify(payload));
+      const sent = result.current.ws?.sentMessages ?? [];
+      expect(sent).not.toContain(
+        JSON.stringify({ action: 'send', agentId: 'agent1', text: 'example', conversationId: null })
+      );
     });
 
     it('should provide convenience methods', () => {
@@ -503,8 +512,6 @@ describe('useWs Hook', () => {
 
   describe('Reconnection Logic', () => {
     it('should cancel reconnection on unmount', () => {
-      vi.useFakeTimers();
-      
       const { result, unmount } = renderHook(() => useWs());
 
       act(() => {
@@ -520,14 +527,12 @@ describe('useWs Hook', () => {
         unmount();
       });
 
-      // Should not reconnect
+      // Should not reconnect (unmounted)
       act(() => {
         vi.advanceTimersByTime(2000);
       });
 
       expect(result.current.ready).toBe(false);
-      
-      vi.useRealTimers();
     });
   });
 

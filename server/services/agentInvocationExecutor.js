@@ -8,6 +8,7 @@ import a2aTaskManager from './a2a/a2aTaskManager.js';
 import * as agentRunner from './agentRunner.js';
 import db from '../db.js';
 import logger from '../logger.js';
+import { toOneLine } from './systemPromptBuilder.js';
 
 /**
  * 执行 Agent 间调用
@@ -127,9 +128,9 @@ export async function executeAgentInvocation(invocation, sendToClient) {
  */
 async function executeClaudeAgent(task, agent, invocation, conversationId, onOutput, onExit) {
   logger.log('[AgentInvocationExecutor] Using Claude CLI for task %s', task.id);
-  
+
   // 构建简单的 A2A prompt，复用 runClaudeCli 的 system prompt 和记忆上下文
-  const prompt = buildA2APrompt(invocation);
+  const prompt = buildA2APromptForCLI(invocation);
   
   await agentRunner.runClaudeCli(
     agent.id,
@@ -157,9 +158,9 @@ async function executeClaudeAgent(task, agent, invocation, conversationId, onOut
  */
 async function executeOpencodeAgent(task, agent, invocation, conversationId, onOutput, onExit) {
   logger.log('[AgentInvocationExecutor] Using Opencode CLI for task %s', task.id);
-  
+
   // 构建简单的 A2A prompt，复用 runOpencodeCli 的 system prompt 和记忆上下文
-  const prompt = buildA2APrompt(invocation);
+  const prompt = buildA2APromptForCLI(invocation);
   
   agentRunner.runOpencodeCli(
     agent.id,

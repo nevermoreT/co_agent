@@ -36,6 +36,15 @@ npm run client
 npm run build
 npm run server
 # Access at http://localhost:3000
+
+# Testing
+npm run test          # Run tests in watch mode
+npm run test:run      # Run tests once (CI mode)
+npm run test:coverage # Run tests with coverage report
+
+# Linting
+npm run lint          # Check code style
+npm run lint:fix      # Auto-fix linting issues
 ```
 
 ## Architecture

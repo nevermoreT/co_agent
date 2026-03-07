@@ -66,10 +66,8 @@ describe('Agents Routes', () => {
         { id: 2, name: 'Agent 2', cli_command: 'python test.py' }
       ];
 
-      const mockQuery = vi.fn().mockReturnValue({
-        all: vi.fn(() => mockAgents)
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockAll = vi.fn(() => mockAgents);
+      db.prepare.mockReturnValue({ get: vi.fn(), run: vi.fn(), all: mockAll });
 
       const response = await request(mockApp)
         .get('/agents')
@@ -125,10 +123,8 @@ describe('Agents Routes', () => {
     it('should return agent by ID', async () => {
       const mockAgent = { id: 1, name: 'Test Agent', cli_command: 'node test.js' };
       
-      const mockQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => mockAgent)
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockGet = vi.fn(() => mockAgent);
+      db.prepare.mockReturnValue({ get: mockGet, run: vi.fn(), all: vi.fn() });
 
       const response = await request(mockApp)
         .get('/agents/1')
@@ -136,14 +132,15 @@ describe('Agents Routes', () => {
 
       expect(response.body).toEqual(mockAgent);
       expect(db.prepare).toHaveBeenCalledWith('SELECT * FROM agents WHERE id = ?');
-      expect(mockQuery.get).toHaveBeenCalledWith('1');
+      expect(mockGet).toHaveBeenCalledWith('1');
     });
 
     it('should return 404 for non-existent agent', async () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => undefined)
+      db.prepare.mockReturnValue({
+        get: vi.fn(() => undefined),
+        run: vi.fn(),
+        all: vi.fn(),
       });
-      db.prepare.mockReturnValue(mockQuery);
 
       const response = await request(mockApp)
         .get('/agents/999')
@@ -164,23 +161,12 @@ describe('Agents Routes', () => {
       };
 
       const createdAgent = { id: 1, ...newAgent, responsibilities: JSON.stringify(newAgent.responsibilities) };
-      
-      const mockCountQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => ({ c: 0 }))
-      });
-      
-      const mockInsertQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ lastInsertRowid: 1 }))
-      });
-      
-      const mockSelectQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => createdAgent)
-      });
 
+      const mockInsertRun = vi.fn(() => ({ lastInsertRowid: 1 }));
       db.prepare
-        .mockReturnValueOnce(mockCountQuery)
-        .mockReturnValueOnce(mockInsertQuery)
-        .mockReturnValueOnce(mockSelectQuery);
+        .mockReturnValueOnce({ get: vi.fn(() => ({ c: 0 })), run: vi.fn(), all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(), run: mockInsertRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(() => createdAgent), run: vi.fn(), all: vi.fn() });
 
       const response = await request(mockApp)
         .post('/agents')
@@ -188,7 +174,7 @@ describe('Agents Routes', () => {
         .expect(201);
 
       expect(response.body).toEqual(createdAgent);
-      expect(mockInsertQuery.run).toHaveBeenCalledWith(
+      expect(mockInsertRun).toHaveBeenCalledWith(
         newAgent.name,
         newAgent.cli_command,
         null, // cli_cwd
@@ -199,10 +185,11 @@ describe('Agents Routes', () => {
     });
 
     it('should reject when max agents limit reached', async () => {
-      const mockCountQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => ({ c: 5 })) // MAX_AGENTS = 5
+      db.prepare.mockReturnValue({
+        get: vi.fn(() => ({ c: 5 })),
+        run: vi.fn(),
+        all: vi.fn(),
       });
-      db.prepare.mockReturnValue(mockCountQuery);
 
       const response = await request(mockApp)
         .post('/agents')
@@ -213,6 +200,13 @@ describe('Agents Routes', () => {
     });
 
     it('should require name and cli_command', async () => {
+      // Route checks count first, then validates body
+      db.prepare.mockReturnValue({
+        get: vi.fn(() => ({ c: 0 })),
+        run: vi.fn(),
+        all: vi.fn(),
+      });
+
       const response = await request(mockApp)
         .post('/agents')
         .send({ name: 'Test Agent' }) // missing cli_command
@@ -236,30 +230,19 @@ describe('Agents Routes', () => {
       };
 
       const updateData = { name: 'New Name', role: 'developer' };
-      
-      const mockExistingQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => existingAgent)
-      });
-      
-      const mockUpdateQuery = vi.fn().mockReturnValue({
-        run: vi.fn()
-      });
-      
-      const mockSelectQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => ({ ...existingAgent, ...updateData }))
-      });
 
+      const mockUpdateRun = vi.fn();
       db.prepare
-        .mockReturnValueOnce(mockExistingQuery)
-        .mockReturnValueOnce(mockUpdateQuery)
-        .mockReturnValueOnce(mockSelectQuery);
+        .mockReturnValueOnce({ get: vi.fn(() => existingAgent), run: vi.fn(), all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(), run: mockUpdateRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(() => ({ ...existingAgent, ...updateData })), run: vi.fn(), all: vi.fn() });
 
       const response = await request(mockApp)
         .patch('/agents/1')
         .send(updateData)
         .expect(200);
 
-      expect(mockUpdateQuery.run).toHaveBeenCalledWith(
+      expect(mockUpdateRun).toHaveBeenCalledWith(
         'New Name', // updated name
         'old command', // unchanged cli_command
         '/old/path', // unchanged cli_cwd
@@ -272,10 +255,11 @@ describe('Agents Routes', () => {
     });
 
     it('should return 404 for non-existent agent', async () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => undefined)
+      db.prepare.mockReturnValue({
+        get: vi.fn(() => undefined),
+        run: vi.fn(),
+        all: vi.fn(),
       });
-      db.prepare.mockReturnValue(mockQuery);
 
       const response = await request(mockApp)
         .patch('/agents/999')
@@ -289,111 +273,74 @@ describe('Agents Routes', () => {
   describe('PUT /agents/:id/session', () => {
     it('should set agent session ID', async () => {
       const existingAgent = { id: 1, name: 'Test Agent' };
-      
-      const mockExistingQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => existingAgent)
-      });
-      
-      const mockUpdateQuery = vi.fn().mockReturnValue({
-        run: vi.fn()
-      });
-      
-      const mockSelectQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => ({ ...existingAgent, session_id: 'new-session' }))
-      });
 
+      const mockUpdateRun = vi.fn();
       db.prepare
-        .mockReturnValueOnce(mockExistingQuery)
-        .mockReturnValueOnce(mockUpdateQuery)
-        .mockReturnValueOnce(mockSelectQuery);
+        .mockReturnValueOnce({ get: vi.fn(() => existingAgent), run: vi.fn(), all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(), run: mockUpdateRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(() => ({ ...existingAgent, session_id: 'new-session' })), run: vi.fn(), all: vi.fn() });
 
       const response = await request(mockApp)
         .put('/agents/1/session')
         .send({ session_id: 'new-session' })
         .expect(200);
 
-      expect(mockUpdateQuery.run).toHaveBeenCalledWith('new-session', '1');
+      expect(mockUpdateRun).toHaveBeenCalledWith('new-session', '1');
     });
 
     it('should handle null session_id', async () => {
       const existingAgent = { id: 1, name: 'Test Agent' };
-      
-      const mockExistingQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => existingAgent)
-      });
-      
-      const mockUpdateQuery = vi.fn().mockReturnValue({
-        run: vi.fn()
-      });
-      
-      const mockSelectQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => ({ ...existingAgent, session_id: null }))
-      });
 
+      const mockUpdateRun = vi.fn();
       db.prepare
-        .mockReturnValueOnce(mockExistingQuery)
-        .mockReturnValueOnce(mockUpdateQuery)
-        .mockReturnValueOnce(mockSelectQuery);
+        .mockReturnValueOnce({ get: vi.fn(() => existingAgent), run: vi.fn(), all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(), run: mockUpdateRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(() => ({ ...existingAgent, session_id: null })), run: vi.fn(), all: vi.fn() });
 
       const response = await request(mockApp)
         .put('/agents/1/session')
         .send({ session_id: null })
         .expect(200);
 
-      expect(mockUpdateQuery.run).toHaveBeenCalledWith(null, '1');
+      expect(mockUpdateRun).toHaveBeenCalledWith(null, '1');
     });
   });
 
   describe('DELETE /agents/:id/session', () => {
     it('should clear agent session ID', async () => {
       const existingAgent = { id: 1, name: 'Test Agent', session_id: 'session123' };
-      
-      const mockExistingQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => existingAgent)
-      });
-      
-      const mockUpdateQuery = vi.fn().mockReturnValue({
-        run: vi.fn()
-      });
-      
-      const mockSelectQuery = vi.fn().mockReturnValue({
-        get: vi.fn(() => ({ ...existingAgent, session_id: null }))
-      });
 
+      const mockUpdateRun = vi.fn();
       db.prepare
-        .mockReturnValueOnce(mockExistingQuery)
-        .mockReturnValueOnce(mockUpdateQuery)
-        .mockReturnValueOnce(mockSelectQuery);
+        .mockReturnValueOnce({ get: vi.fn(() => existingAgent), run: vi.fn(), all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(), run: mockUpdateRun, all: vi.fn() })
+        .mockReturnValueOnce({ get: vi.fn(() => ({ ...existingAgent, session_id: null })), run: vi.fn(), all: vi.fn() });
 
       const response = await request(mockApp)
         .delete('/agents/1/session')
         .expect(200);
 
-      expect(mockUpdateQuery.run).toHaveBeenCalledWith('1');
+      expect(mockUpdateRun).toHaveBeenCalledWith('1');
       expect(response.body.session_id).toBeNull();
     });
   });
 
   describe('DELETE /agents/:id', () => {
     it('should delete agent', async () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ changes: 1 }))
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockRun = vi.fn(() => ({ changes: 1 }));
+      db.prepare.mockReturnValue({ get: vi.fn(), run: mockRun, all: vi.fn() });
 
       const response = await request(mockApp)
         .delete('/agents/1')
         .expect(204);
 
       expect(response.body).toEqual({});
-      expect(mockQuery.run).toHaveBeenCalledWith('1');
+      expect(mockRun).toHaveBeenCalledWith('1');
     });
 
     it('should return 404 for non-existent agent', async () => {
-      const mockQuery = vi.fn().mockReturnValue({
-        run: vi.fn(() => ({ changes: 0 }))
-      });
-      db.prepare.mockReturnValue(mockQuery);
+      const mockRun = vi.fn(() => ({ changes: 0 }));
+      db.prepare.mockReturnValue({ get: vi.fn(), run: mockRun, all: vi.fn() });
 
       const response = await request(mockApp)
         .delete('/agents/999')
