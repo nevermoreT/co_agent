@@ -1,11 +1,27 @@
 import { useState, useEffect } from 'react';
-import { agentApi, sessionApi, statsApi } from '../services/api.js';
-import { formatRelativeTime } from '../utils/timeUtils.js';
-import { safeAsync } from '../utils/errorHandler.js';
 import './RightPanel.css';
 import SoulConfigPanel from './SoulConfigPanel';
 
+const API = '/api';
 const MAX_AGENTS = 5;
+
+function formatSessionTime(isoString) {
+  if (!isoString) return '';
+  // 兼容 "YYYY-MM-DD HH:MM:SS" 和 ISO 8601 格式
+  const normalized = isoString.includes('T') ? isoString : isoString.replace(' ', 'T');
+  const date = new Date(normalized);
+  const now = new Date();
+  const diff = now - date;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes}分钟前`;
+  if (hours < 24) return `${hours}小时前`;
+  if (days < 7) return `${days}天前`;
+  return date.toLocaleDateString('zh-CN');
+}
 
 function generateFakeTokenStats(sessionId) {
   const hash = sessionId ? sessionId.split('').reduce((a, c) => a + c.charCodeAt(0), 0) : 0;
@@ -48,25 +64,29 @@ export default function RightPanel({
       return;
     }
     let cancelled = false;
-
-    Promise.all([
-      safeAsync(() => statsApi.messages(selectedTaskId), 'RightPanel.stats'),
-      safeAsync(() => sessionApi.listByTask(selectedTaskId), 'RightPanel.sessions', []),
-    ]).then(([statsData, sessionsData]) => {
-      if (!cancelled) {
-        setStats(statsData);
-        setSessions(Array.isArray(sessionsData) ? sessionsData : []);
-      }
-    });
-
+    
+    fetch(`${API}/stats/messages?task_id=${selectedTaskId}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (!cancelled) setStats(data);
+      })
+      .catch(() => { if (!cancelled) setStats(null); });
+    
+    fetch(`${API}/sessions/task/${selectedTaskId}`)
+      .then((res) => res.ok ? res.json() : [])
+      .then((data) => {
+        if (!cancelled) setSessions(Array.isArray(data) ? data : []);
+      })
+      .catch(() => { if (!cancelled) setSessions([]); });
+    
     return () => { cancelled = true; };
   }, [selectedTaskId]);
 
   const openNewAgent = () => {
     setAgentForm('new');
-    setForm({
-      name: '',
-      cli_command: '',
+    setForm({ 
+      name: '', 
+      cli_command: '', 
       cli_cwd: '',
       role: '',
       responsibilities: '',
@@ -82,9 +102,9 @@ export default function RightPanel({
     } catch {
       responsibilities = [];
     }
-    setForm({
-      name: a.name,
-      cli_command: a.cli_command,
+    setForm({ 
+      name: a.name, 
+      cli_command: a.cli_command, 
       cli_cwd: a.cli_cwd || '',
       role: a.role || '',
       responsibilities: responsibilities.join('\n'),
@@ -97,39 +117,45 @@ export default function RightPanel({
       .split('\n')
       .map(r => r.trim())
       .filter(r => r);
-
+    
     const submitData = {
       ...form,
       responsibilities: responsibilitiesArray
     };
-
+    
     if (agentForm === 'new') {
-      try {
-        await agentApi.create(submitData);
+      const res = await fetch(`${API}/agents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(submitData),
+      });
+      if (res.ok) {
         refetchAgents();
         setAgentForm(null);
-      } catch (err) {
-        alert(err.message || '保存失败');
+      } else {
+        const err = await res.json();
+        alert(err.error || '保存失败');
       }
     } else {
-      try {
-        await agentApi.update(agentForm, submitData);
+      const res = await fetch(`${API}/agents/${agentForm}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(submitData),
+      });
+      if (res.ok) {
         refetchAgents();
         setAgentForm(null);
-      } catch (err) {
-        alert(err.message || '保存失败');
+      } else {
+        const err = await res.json();
+        alert(err.error || '保存失败');
       }
     }
   };
 
   const deleteAgent = async (id) => {
     if (!confirm('确定删除该 Agent？')) return;
-    try {
-      await agentApi.delete(id);
-      refetchAgents();
-    } catch {
-      // ignore
-    }
+    const res = await fetch(`${API}/agents/${id}`, { method: 'DELETE' });
+    if (res.ok) refetchAgents();
     setAgentForm(null);
   };
 
@@ -191,7 +217,7 @@ export default function RightPanel({
               {sessions.map((s) => {
                 const tokenStats = generateFakeTokenStats(s.session_id);
                 const isActive = runningAgentIds.includes(s.agent_id);
-
+                
                 return (
                   <div key={s.agent_id} className={`session-item ${isActive ? 'active' : ''}`}>
                     <div className="session-header">
@@ -204,7 +230,7 @@ export default function RightPanel({
                     <div className="session-name">{s.agent_name}</div>
                     <div className="session-id">{s.session_id?.substring(0, 8)}...{s.session_id?.substring(s.session_id.length - 4)}</div>
                     <div className="session-meta">
-                      <span>Started {formatRelativeTime(s.created_at)}</span>
+                      <span>Started {formatSessionTime(s.created_at)}</span>
                     </div>
                     <div className="session-stats">
                       <div className="session-stat">
@@ -264,7 +290,7 @@ export default function RightPanel({
         <div className="right-modal">
           <div className="right-modal-content right-modal-large">
             <h3>{agentForm === 'new' ? '添加 Agent' : '编辑 Agent'}</h3>
-
+            
             <div className="form-section">
               <h4>基本信息</h4>
               <label>名称</label>
@@ -288,7 +314,7 @@ export default function RightPanel({
                 readOnly={!!(typeof agentForm === 'number' && agents.find((ag) => ag.id === agentForm)?.builtin_key)}
               />
             </div>
-
+            
             <div className="form-section">
               <h4>角色配置（Phase 3.1）</h4>
               <label>角色</label>

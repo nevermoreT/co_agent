@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { taskApi } from '../services/api.js';
-import { safeAsync } from '../utils/errorHandler.js';
+
+const API = '/api';
 
 export function useTasks() {
   const [tasks, setTasks] = useState([]);
@@ -8,13 +8,16 @@ export function useTasks() {
 
   const refetch = useCallback(async () => {
     setLoading(true);
-    const result = await safeAsync(
-      () => taskApi.list(),
-      'useTasks.refetch',
-      []
-    );
-    setTasks(Array.isArray(result) ? result : []);
-    setLoading(false);
+    try {
+      const res = await fetch(`${API}/tasks`);
+      if (!res.ok) throw new Error(res.statusText);
+      const data = await res.json();
+      setTasks(Array.isArray(data) ? data : []);
+    } catch {
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {

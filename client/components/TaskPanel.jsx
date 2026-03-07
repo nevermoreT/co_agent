@@ -1,8 +1,23 @@
 import { useState, useRef, useEffect } from 'react';
-import { taskApi } from '../services/api.js';
-import { formatRelativeTime } from '../utils/timeUtils.js';
-import { safeAsync } from '../utils/errorHandler.js';
 import './TaskPanel.css';
+
+const API = '/api';
+
+function formatTime(isoString) {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  const now = new Date();
+  const diff = now - date;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes}分钟前`;
+  if (hours < 24) return `${hours}小时前`;
+  if (days < 7) return `${days}天前`;
+  return date.toLocaleDateString('zh-CN');
+}
 
 export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onSelectTask }) {
   const [editing, setEditing] = useState(null);
@@ -24,17 +39,20 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
   useEffect(() => {
     tasks.forEach(async (t) => {
       if (!previews[t.id]) {
-        const result = await safeAsync(
-          () => taskApi.preview(t.id),
-          'TaskPanel.preview',
-          null
-        );
-        if (result) {
-          setPreviews((p) => ({ ...p, [t.id]: result }));
+        try {
+          const res = await fetch(`${API}/tasks/${t.id}/preview`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data) {
+              setPreviews((p) => ({ ...p, [t.id]: data }));
+            }
+          }
+        } catch {
+          // ignore
         }
       }
     });
-  }, [tasks, previews]);
+  }, [tasks]);
 
   const openNew = () => {
     setEditing('new');
@@ -48,29 +66,26 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
 
   const save = async () => {
     if (!form.title.trim()) return;
-
+    
     if (editing === 'new') {
-      const data = await safeAsync(
-        () => taskApi.create({ 
-          title: form.title, 
-          group_name: form.group_name || null 
-        }),
-        'TaskPanel.create'
-      );
-      if (data) {
+      const res = await fetch(`${API}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: form.title, group_name: form.group_name || null }),
+      });
+      if (res.ok) {
+        const data = await res.json();
         refetch();
         closeEdit();
         onSelectTask(data.id);
       }
     } else if (editing != null && editing !== 'new') {
-      const data = await safeAsync(
-        () => taskApi.update(editing, { 
-          title: form.title, 
-          group_name: form.group_name || null 
-        }),
-        'TaskPanel.update'
-      );
-      if (data) {
+      const res = await fetch(`${API}/tasks/${editing}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: form.title, group_name: form.group_name || null }),
+      });
+      if (res.ok) {
         refetch();
         closeEdit();
       }
@@ -79,11 +94,8 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
 
   const remove = async (id) => {
     if (!confirm('确定删除该对话？所有消息将被删除。')) return;
-    const result = await safeAsync(
-      () => taskApi.delete(id),
-      'TaskPanel.delete'
-    );
-    if (result !== null) {
+    const res = await fetch(`${API}/tasks/${id}`, { method: 'DELETE' });
+    if (res.ok) {
       refetch();
       if (selectedTaskId === id) onSelectTask(null);
       setContextMenu(null);
@@ -108,11 +120,12 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
   };
 
   const archiveTask = async (id) => {
-    const data = await safeAsync(
-      () => taskApi.update(id, { is_archived: true }),
-      'TaskPanel.archive'
-    );
-    if (data) {
+    const res = await fetch(`${API}/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_archived: true }),
+    });
+    if (res.ok) {
       refetch();
       if (selectedTaskId === id) onSelectTask(null);
       setContextMenu(null);
@@ -134,7 +147,7 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
           +
         </button>
       </header>
-
+      
       {loading ? (
         <div className="task-panel-loading">加载中...</div>
       ) : (
@@ -144,10 +157,10 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
               <div className="task-group-header">{group}</div>
               {groupTasks.map((t) => {
                 const preview = previews[t.id];
-                const previewText = preview?.content
+                const previewText = preview?.content 
                   ? preview.content.substring(0, 30) + (preview.content.length > 30 ? '...' : '')
                   : '';
-
+                  
                 return (
                   <div
                     key={t.id}
@@ -161,7 +174,7 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
                         <div className="task-item-preview">{previewText}</div>
                       )}
                       <div className="task-item-meta">
-                        <span className="task-item-time">{formatRelativeTime(t.last_activity_at || t.created_at)}</span>
+                        <span className="task-item-time">{formatTime(t.last_activity_at || t.created_at)}</span>
                         {t.message_count > 0 && (
                           <span className="task-item-count">{t.message_count}条</span>
                         )}
@@ -172,7 +185,7 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
               })}
             </div>
           ))}
-
+          
           {tasks.length === 0 && (
             <div className="task-panel-empty">
               暂无对话
@@ -221,9 +234,9 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
               <button type="button" className="btn" onClick={closeEdit}>
                 取消
               </button>
-              <button
-                type="button"
-                className="btn btn-primary"
+              <button 
+                type="button" 
+                className="btn btn-primary" 
                 onClick={save}
                 disabled={!form.title.trim()}
               >

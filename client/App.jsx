@@ -5,10 +5,10 @@ import RightPanel from './components/RightPanel';
 import { useAgents } from './hooks/useAgents';
 import { useTasks } from './hooks/useTasks';
 import { useWs } from './hooks/useWs';
-import { messageApi } from './services/api.js';
 import logger from './utils/logger';
 import './App.css';
 
+const API = '/api';
 const DEFAULT_CONVERSATION_TITLE = '创世碎碎念';
 
 export default function App() {
@@ -182,13 +182,17 @@ export default function App() {
 
       // 保存消息到对应会话
       if (content.trim() || toolCalls.length > 0) {
-        messageApi.create({
-          role: 'assistant',
-          content,
-          agent_id: agentId,
-          agent_name: agentName,
-          task_id: targetConversationId,
-          metadata: toolCalls.length > 0 ? { tool_calls: toolCalls } : null,
+        fetch(`${API}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: 'assistant',
+            content,
+            agent_id: agentId,
+            agent_name: agentName,
+            task_id: targetConversationId,
+            metadata: toolCalls.length > 0 ? JSON.stringify({ tool_calls: toolCalls }) : null,
+          }),
         }).catch((err) => {
           logger.error('[App] failed to save assistant message:', err);
         });
@@ -298,12 +302,16 @@ export default function App() {
 
       // 保存消息到对应会话
       if (content.trim()) {
-        messageApi.create({
-          role: 'assistant',
-          content,
-          agent_id: agentId,
-          agent_name: agentName,
-          task_id: convId,
+        fetch(`${API}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: 'assistant',
+            content,
+            agent_id: agentId,
+            agent_name: agentName,
+            task_id: convId,
+          }),
         }).catch((err) => {
           logger.error('[App] onA2AComplete: failed to save assistant message:', err);
         });
