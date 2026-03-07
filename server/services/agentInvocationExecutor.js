@@ -6,6 +6,7 @@
 
 import a2aTaskManager from './a2a/a2aTaskManager.js';
 import * as agentRunner from './agentRunner.js';
+import { detectAgentInvocation } from './agentInvocationDetector.js';
 import db from '../db.js';
 import logger from '../logger.js';
 import { toOneLine } from './systemPromptBuilder.js';
@@ -88,7 +89,8 @@ export async function executeAgentInvocation(invocation, sendToClient) {
         },
         (code, signal) => {
           handleAgentExit(task.id, code, signal, accumulatedOutput, conversationId, targetAgentId, sendToClient);
-        }
+        },
+        sendToClient
       );
     } else if (targetAgent.builtin_key === 'opencode-cli') {
       await executeOpencodeAgent(
@@ -102,7 +104,8 @@ export async function executeAgentInvocation(invocation, sendToClient) {
         },
         (code, signal) => {
           handleAgentExit(task.id, code, signal, accumulatedOutput, conversationId, targetAgentId, sendToClient);
-        }
+        },
+        sendToClient
       );
     } else {
       throw new Error(`Unsupported agent type: ${targetAgent.builtin_key}`);
@@ -125,20 +128,60 @@ export async function executeAgentInvocation(invocation, sendToClient) {
 
 /**
  * 执行 Claude CLI Agent
+ * @param {Object} task - A2A Task 对象
+ * @param {Object} agent - 目标 Agent 对象
+ * @param {Object} invocation - 调用信息
+ * @param {number} conversationId - 对话 ID
+ * @param {Function} onOutput - 输出回调
+ * @param {Function} onExit - 退出回调
+ * @param {Function} sendToClient - 发送消息给客户端的回调
  */
-async function executeClaudeAgent(task, agent, invocation, conversationId, onOutput, onExit) {
+async function executeClaudeAgent(task, agent, invocation, conversationId, onOutput, onExit, sendToClient) {
   logger.log('[AgentInvocationExecutor] Using Claude CLI for task %s', task.id);
 
-  // 构建简单的 A2A prompt，复用 runClaudeCli 的 system prompt 和记忆上下文
   const prompt = buildA2APromptForCLI(invocation);
+  
+  let outputBuffer = '';
+  let pendingA2A = null;
+  
+  const wrappedOnOutput = (stream, data) => {
+    if (stream === 'stdout' && typeof data === 'string') {
+      outputBuffer += data;
+      
+      if (!pendingA2A) {
+        const a2aResult = detectAgentInvocation(agent.id, outputBuffer, conversationId);
+        if (a2aResult) {
+          logger.log('[AgentInvocationExecutor] Detected nested A2A: Agent %d -> Agent %d', 
+            agent.id, a2aResult.targetAgentId);
+          pendingA2A = a2aResult;
+        }
+      }
+    }
+    
+    onOutput(stream, data);
+  };
+  
+  const wrappedOnExit = (code, signal) => {
+    if (pendingA2A) {
+      const fullInvocation = {
+        ...pendingA2A,
+        fullOutput: outputBuffer,
+      };
+      logger.log('[AgentInvocationExecutor] Executing nested A2A with full output (%d chars)', outputBuffer.length);
+      setImmediate(() => {
+        executeAgentInvocation(fullInvocation, sendToClient);
+      });
+    }
+    
+    onExit(code, signal);
+  };
   
   await agentRunner.runClaudeCli(
     agent.id,
     prompt,
-    onOutput,
-    onExit,
+    wrappedOnOutput,
+    wrappedOnExit,
     conversationId,
-    // onToolUse
     (toolData) => {
       a2aTaskManager.addTaskHistory(task.id, {
         role: 'tool_use',
@@ -156,19 +199,52 @@ async function executeClaudeAgent(task, agent, invocation, conversationId, onOut
 /**
  * 执行 Opencode CLI Agent
  */
-async function executeOpencodeAgent(task, agent, invocation, conversationId, onOutput, onExit) {
+async function executeOpencodeAgent(task, agent, invocation, conversationId, onOutput, onExit, sendToClient) {
   logger.log('[AgentInvocationExecutor] Using Opencode CLI for task %s', task.id);
 
-  // 构建简单的 A2A prompt，复用 runOpencodeCli 的 system prompt 和记忆上下文
   const prompt = buildA2APromptForCLI(invocation);
+  
+  let outputBuffer = '';
+  let pendingA2A = null;
+  
+  const wrappedOnOutput = (stream, data) => {
+    if (stream === 'stdout' && typeof data === 'string') {
+      outputBuffer += data;
+      
+      if (!pendingA2A) {
+        const a2aResult = detectAgentInvocation(agent.id, outputBuffer, conversationId);
+        if (a2aResult) {
+          logger.log('[AgentInvocationExecutor] Detected nested A2A: Agent %d -> Agent %d', 
+            agent.id, a2aResult.targetAgentId);
+          pendingA2A = a2aResult;
+        }
+      }
+    }
+    
+    onOutput(stream, data);
+  };
+  
+  const wrappedOnExit = (code, signal) => {
+    if (pendingA2A) {
+      const fullInvocation = {
+        ...pendingA2A,
+        fullOutput: outputBuffer,
+      };
+      logger.log('[AgentInvocationExecutor] Executing nested A2A with full output (%d chars)', outputBuffer.length);
+      setImmediate(() => {
+        executeAgentInvocation(fullInvocation, sendToClient);
+      });
+    }
+    
+    onExit(code, signal);
+  };
   
   agentRunner.runOpencodeCli(
     agent.id,
     prompt,
-    onOutput,
-    onExit,
+    wrappedOnOutput,
+    wrappedOnExit,
     conversationId,
-    // onToolUse
     (toolData) => {
       a2aTaskManager.addTaskHistory(task.id, {
         role: 'tool_use',
