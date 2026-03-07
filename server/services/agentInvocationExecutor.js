@@ -184,21 +184,22 @@ async function executeOpencodeAgent(task, agent, invocation, conversationId, onO
 
 /**
  * 构建 A2A 调用 prompt
- * 注意：Windows shell 模式下换行符会导致 prompt 被截断，需要替换为空格
  */
-function buildA2APrompt(invocation) {
+function buildA2APromptForCLI(invocation) {
   const { sourceAgentId, invocationText, fullOutput } = invocation;
   
   // 获取源 Agent 名称
   const sourceAgent = db.prepare('SELECT name FROM agents WHERE id = ?').get(sourceAgentId);
   const sourceName = sourceAgent?.name || 'Agent';
   
-  // Windows shell 兼容：替换换行符为空格
-  const oneLineOutput = (fullOutput || '').replace(/\r?\n/g, ' ').replace(/\r/g, '');
-  const oneLineInvocation = (invocationText || '').replace(/\r?\n/g, ' ').replace(/\r/g, '');
+  // 使用 toOneLine 处理换行符
+  const oneLineOutput = toOneLine(fullOutput);
+  const oneLineInvocation = toOneLine(invocationText);
   
   return `${sourceName} 的完整输出: ${oneLineOutput} --- 请处理: ${oneLineInvocation}`;
 }
+
+
 
 /**
  * 处理 Agent 输出
