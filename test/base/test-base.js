@@ -3,7 +3,6 @@
  * 提供公共的测试设置和清理逻辑
  */
 
-import { beforeEach, afterEach, vi } from 'vitest';
 import { factories, mocks, utils } from '../utils/test-helpers.js';
 
 export class TestBase {

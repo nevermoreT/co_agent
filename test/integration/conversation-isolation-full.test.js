@@ -2,7 +2,7 @@
  * 会话隔离端到端测试 - 模拟用户切换会话的场景
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useState, useMemo } from 'react';
 

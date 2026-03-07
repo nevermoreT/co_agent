@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-
-const API = '/api';
+import { agentApi } from '../services/api.js';
+import { safeAsync } from '../utils/errorHandler.js';
 
 export function useAgents() {
   const [agents, setAgents] = useState([]);
@@ -8,16 +8,13 @@ export function useAgents() {
 
   const refetch = useCallback(async () => {
     setLoading(true);
-    try {
-      const res = await fetch(`${API}/agents`);
-      if (!res.ok) throw new Error(res.statusText);
-      const data = await res.json();
-      setAgents(Array.isArray(data) ? data : []);
-    } catch {
-      setAgents([]);
-    } finally {
-      setLoading(false);
-    }
+    const result = await safeAsync(
+      () => agentApi.list(),
+      'useAgents.refetch',
+      []
+    );
+    setAgents(Array.isArray(result) ? result : []);
+    setLoading(false);
   }, []);
 
   useEffect(() => {

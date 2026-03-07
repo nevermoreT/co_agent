@@ -3,7 +3,7 @@
  * 提供通用的测试辅助函数、数据工厂、模拟工具等
  */
 
-import { vi, beforeEach, afterEach } from 'vitest';
+import { vi } from 'vitest';
 
 // 数据工厂
 export const factories = {
@@ -131,36 +131,30 @@ export const mocks = {
    */
   createMockAgentRunner: () => {
     return {
-      run: vi.fn((agentId, onOutput, onExit) => {
-        // 模拟启动成功
+      run: vi.fn((_agentId, _onOutput, _onExit) => {
         return true;
       }),
-      runClaudeCli: vi.fn(async (agentId, prompt, onOutput, onExit) => {
-        // 模拟 Claude CLI 调用
+      runClaudeCli: vi.fn(async (_agentId, prompt, onOutput, onExit) => {
         setTimeout(() => {
           onOutput('stdout', `Claude processed: ${prompt.substring(0, 20)}...`);
           onExit(0, null);
         }, 100);
         return true;
       }),
-      runOpencodeCli: vi.fn((agentId, prompt, onOutput, onExit) => {
-        // 模拟 Opencode CLI 调用
+      runOpencodeCli: vi.fn((_agentId, prompt, onOutput, onExit) => {
         setTimeout(() => {
           onOutput('stdout', `Opencode processed: ${prompt.substring(0, 20)}...`);
           onExit(0, null);
         }, 100);
         return true;
       }),
-      sendInput: vi.fn((agentId, text) => {
-        // 模拟发送输入
+      sendInput: vi.fn((_agentId, _text) => {
         return true;
       }),
-      stop: vi.fn((agentId) => {
-        // 模拟停止
+      stop: vi.fn((_agentId) => {
         return true;
       }),
-      isRunning: vi.fn((agentId) => {
-        // 模拟运行状态检查
+      isRunning: vi.fn((_agentId) => {
         return false;
       }),
       getRunningAgentIds: vi.fn(() => {
@@ -177,16 +171,14 @@ export const mocks = {
     const tables = new Map();
     
     return {
-      prepare: vi.fn((sql) => {
+      prepare: vi.fn((_sql) => {
         return {
           get: vi.fn((...params) => {
-            // 简单的查询模拟
-            const tableName = sql.match(/FROM\s+(\w+)/i)?.[1];
+            const tableName = _sql.match(/FROM\s+(\w+)/i)?.[1];
             if (tableName && tables.has(tableName)) {
               const table = tables.get(tableName);
-              // 简单的 WHERE 条件处理
-              if (sql.includes('WHERE')) {
-                const whereMatch = sql.match(/WHERE\s+(\w+)\s*=\s*\?/i);
+              if (_sql.includes('WHERE')) {
+                const whereMatch = _sql.match(/WHERE\s+(\w+)\s*=\s*\?/i);
                 if (whereMatch) {
                   const field = whereMatch[1];
                   const value = params[0];
@@ -197,23 +189,23 @@ export const mocks = {
             }
             return null;
           }),
-          all: vi.fn((...params) => {
-            const tableName = sql.match(/FROM\s+(\w+)/i)?.[1];
+          all: vi.fn((..._params) => {
+            const tableName = _sql.match(/FROM\s+(\w+)/i)?.[1];
             if (tableName && tables.has(tableName)) {
               return tables.get(tableName);
             }
             return [];
           }),
           run: vi.fn((...params) => {
-            const tableName = sql.match(/(?:INTO|UPDATE|DELETE FROM)\s+(\w+)/i)?.[1];
+            const tableName = _sql.match(/(?:INTO|UPDATE|DELETE FROM)\s+(\w+)/i)?.[1];
             if (tableName) {
               if (!tables.has(tableName)) {
                 tables.set(tableName, []);
               }
               const table = tables.get(tableName);
               
-              if (sql.includes('INSERT')) {
-                const valuesMatch = sql.match(/\(([^)]+)\)/g);
+              if (_sql.includes('INSERT')) {
+                const valuesMatch = _sql.match(/\(([^)]+)\)/g);
                 if (valuesMatch && params.length > 0) {
                   const newRow = {};
                   const columns = valuesMatch[0].substring(1, valuesMatch[0].length - 1).split(', ');
@@ -224,19 +216,17 @@ export const mocks = {
                   
                   table.push(newRow);
                 }
-              } else if (sql.includes('UPDATE')) {
-                const setMatch = sql.match(/SET\s+([^WHERE]+)/i);
+              } else if (_sql.includes('UPDATE')) {
+                const setMatch = _sql.match(/SET\s+([^WHERE]+)/i);
                 if (setMatch) {
-                  const whereMatch = sql.match(/WHERE\s+(\w+)\s*=\s*\?/i);
+                  const whereMatch = _sql.match(/WHERE\s+(\w+)\s*=\s*\?/i);
                   if (whereMatch) {
                     const field = whereMatch[1];
-                    const value = params[params.length - 1]; // WHERE 参数在最后
-                    const updateParams = params.slice(0, params.length - 1); // 除了 WHERE 参数
+                    const value = params[params.length - 1];
+                    const _updateParams = params.slice(0, params.length - 1);
                     
                     const row = table.find(r => r[field] === value);
                     if (row) {
-                      // 简单的 SET 参数应用
-                      // 这里可以根据具体 SQL 来实现更精确的更新
                     }
                   }
                 }
@@ -247,8 +237,7 @@ export const mocks = {
           }),
         };
       }),
-      exec: vi.fn((sql) => {
-        // 执行 SQL
+      exec: vi.fn((_sql) => {
       }),
       // 用于设置测试数据
       setTableData: (tableName, data) => {

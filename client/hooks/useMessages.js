@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-
-const API = '/api';
+import { messageApi } from '../services/api.js';
+import { safeAsync } from '../utils/errorHandler.js';
 
 export function useMessages(agentId) {
   const [messages, setMessages] = useState([]);
@@ -13,25 +13,18 @@ export function useMessages(agentId) {
       return;
     }
     setLoading(true);
-    try {
-      const res = await fetch(`${API}/agents/${agentId}/messages?limit=100`);
-      if (!res.ok) throw new Error(res.statusText);
-      const data = await res.json();
-      setMessages(Array.isArray(data) ? data : []);
-    } catch {
-      setMessages([]);
-    } finally {
-      setLoading(false);
-    }
+    const result = await safeAsync(
+      () => messageApi.listByAgent(agentId, 100),
+      'useMessages.refetch',
+      []
+    );
+    setMessages(Array.isArray(result) ? result : []);
+    setLoading(false);
   }, [agentId]);
 
   useEffect(() => {
     refetch();
   }, [refetch]);
 
-  const addMessage = useCallback((msg) => {
-    setMessages((prev) => [...prev, msg]);
-  }, []);
-
-  return { messages, loading, refetch, addMessage };
+  return { messages, loading, refetch };
 }

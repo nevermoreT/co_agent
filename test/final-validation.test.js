@@ -2,7 +2,7 @@
  * Final validation test for the test infrastructure
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { TestBase, UnitTestBase } from './base/test-base.js';
 import { factories, mocks, utils } from './utils/test-helpers.js';
 import { waitFor } from './utils/test-helpers.js';
@@ -239,12 +239,11 @@ describe('Co-Agent Platform Test Infrastructure', () => {
     it('should simulate Claude CLI integration', async () => {
       const mockRunner = mocks.createMockAgentRunner();
       
-      // Simulate Claude CLI call
       const result = await mockRunner.runClaudeCli(
         1, 
         'Test prompt for Claude', 
-        (stream, data) => { /* onOutput */ },
-        (code, signal) => { /* onExit */ }
+        (_stream, _data) => { /* onOutput */ },
+        (_code, _signal) => { /* onExit */ }
       );
       
       expect(result).toBeDefined();
@@ -253,12 +252,11 @@ describe('Co-Agent Platform Test Infrastructure', () => {
     it('should simulate Opencode CLI integration', () => {
       const mockRunner = mocks.createMockAgentRunner();
       
-      // Simulate Opencode CLI call
       const result = mockRunner.runOpencodeCli(
         1,
         'Test prompt for Opencode',
-        (stream, data) => { /* onOutput */ },
-        (code, signal) => { /* onExit */ }
+        (_stream, _data) => { /* onOutput */ },
+        (_code, _signal) => { /* onExit */ }
       );
       
       expect(result).toBeDefined();

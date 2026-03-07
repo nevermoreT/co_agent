@@ -2,7 +2,7 @@
  * 会话隔离单元测试 - 测试 App.jsx 中的状态管理逻辑
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useState, useMemo } from 'react';
 
@@ -11,8 +11,8 @@ function useConversationIsolation() {
   const [selectedConversationId, setSelectedConversationId] = useState(null);
   // 流式输出状态按 conversationId 隔离存储
   const [streamingByConversation, setStreamingByConversation] = useState({});
-  const [streamingAgentIdByConversation, setStreamingAgentIdByConversation] = useState({});
-  const [streamingToolCallsByConversation, setStreamingToolCallsByConversation] = useState({});
+  const [streamingAgentIdByConversation] = useState({});
+  const [streamingToolCallsByConversation] = useState({});
   const streamingRefByConversation = { current: {} };
 
   // 获取当前会话的流式输出状态

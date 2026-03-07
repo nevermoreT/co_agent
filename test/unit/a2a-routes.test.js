@@ -3,20 +3,19 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { factories, mocks } from '../utils/test-helpers.js';
 
 describe('A2A Routes - Unit Tests', () => {
-  let mockReq, mockRes, mockNext;
+  let _mockReq, _mockRes, _mockNext;
 
   beforeEach(() => {
-    mockReq = {
+    _mockReq = {
       body: {},
       params: {},
       query: {},
       get: vi.fn(),
     };
     
-    mockRes = {
+    _mockRes = {
       status: vi.fn().mockReturnThis(),
       json: vi.fn().mockReturnThis(),
       send: vi.fn().mockReturnThis(),
@@ -25,7 +24,7 @@ describe('A2A Routes - Unit Tests', () => {
       end: vi.fn().mockReturnThis(),
     };
     
-    mockNext = vi.fn();
+    _mockNext = vi.fn();
   });
 
   it('should handle GET /.well-known/agent.json', async () => {
@@ -47,8 +46,7 @@ describe('A2A Routes - Unit Tests', () => {
 
     const a2aRoutes = await import('../../server/routes/a2a.js');
     
-    // Test the GET /agents endpoint
-    mockReq.query = {};
+    _mockReq.query = {};
     
     // We can't easily test Express routers directly without a full app
     // So we'll just ensure the module loads correctly
@@ -72,17 +70,17 @@ describe('A2A Routes - Unit Tests', () => {
 });
 
 describe('A2A Task Routes - Unit Tests', () => {
-  let mockReq, mockRes, mockNext;
+  let _mockReq, _mockRes, _mockNext;
 
   beforeEach(() => {
-    mockReq = {
+    _mockReq = {
       body: {},
       params: {},
       query: {},
       get: vi.fn(),
     };
     
-    mockRes = {
+    _mockRes = {
       status: vi.fn().mockReturnThis(),
       json: vi.fn().mockReturnThis(),
       send: vi.fn().mockReturnThis(),
@@ -91,7 +89,7 @@ describe('A2A Task Routes - Unit Tests', () => {
       end: vi.fn().mockReturnThis(),
     };
     
-    mockNext = vi.fn();
+    _mockNext = vi.fn();
   });
 
   it('should handle POST /a2a/tasks/send', async () => {

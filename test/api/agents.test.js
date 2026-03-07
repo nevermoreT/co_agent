@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import agentsRouter from '../../server/routes/agents.js';
@@ -237,7 +237,7 @@ describe('Agents Routes', () => {
         .mockReturnValueOnce({ get: vi.fn(), run: mockUpdateRun, all: vi.fn() })
         .mockReturnValueOnce({ get: vi.fn(() => ({ ...existingAgent, ...updateData })), run: vi.fn(), all: vi.fn() });
 
-      const response = await request(mockApp)
+      await request(mockApp)
         .patch('/agents/1')
         .send(updateData)
         .expect(200);
@@ -280,7 +280,7 @@ describe('Agents Routes', () => {
         .mockReturnValueOnce({ get: vi.fn(), run: mockUpdateRun, all: vi.fn() })
         .mockReturnValueOnce({ get: vi.fn(() => ({ ...existingAgent, session_id: 'new-session' })), run: vi.fn(), all: vi.fn() });
 
-      const response = await request(mockApp)
+      await request(mockApp)
         .put('/agents/1/session')
         .send({ session_id: 'new-session' })
         .expect(200);
@@ -297,7 +297,7 @@ describe('Agents Routes', () => {
         .mockReturnValueOnce({ get: vi.fn(), run: mockUpdateRun, all: vi.fn() })
         .mockReturnValueOnce({ get: vi.fn(() => ({ ...existingAgent, session_id: null })), run: vi.fn(), all: vi.fn() });
 
-      const response = await request(mockApp)
+      await request(mockApp)
         .put('/agents/1/session')
         .send({ session_id: null })
         .expect(200);

@@ -45,4 +45,11 @@ export default [
       'data/**',
     ],
   },
+  {
+    files: ['test/**/*.{js,jsx}'],
+    rules: {
+      'no-import-assign': 'off',
+      'no-empty': 'off',
+    },
+  },
 ];

@@ -8,31 +8,15 @@ import db from '../db.js';
 import logger from '../logger.js';
 
 /**
- * 调用意图关键词
- * 当 @mention 后包含这些词时，认为是调用意图
+ * 非 A2A 场景关键词
+ * 当 @mention 后紧跟这些词时，认为不是 A2A 调用（如单纯的提及）
  */
-const INVOCATION_KEYWORDS = [
-  // 中文请求词
-  '请', '帮我', '帮忙', '可以', '能否', '能否请',
-  '检查', '检视', '审查', '测试',
-  '实现', '修复', '优化', '改进',
-  '设计', '分析', '评估', '建议',
-  '写', '创建', '生成', '编写',
-  '看看', '查看', '阅读', '理解',
-  '醒醒', '起来', '过来', '出来',
-  '别睡', '别休息', '起来干活',
-  '有用户', '在找你', '需要你',
-  '帮个忙', '帮帮忙', '来帮',
-  
-  // 英文请求词
-  'please', 'help', 'can you', 'could you', 'would you',
-  'review', 'check', 'test', 'verify',
-  'implement', 'fix', 'optimize', 'improve',
-  'design', 'analyze', 'evaluate', 'suggest',
-  'write', 'create', 'generate', 'build',
-  'look at', 'examine', 'read', 'understand',
-  'wake up', 'come here', 'come out',
-  'user', 'looking for', 'need you',
+const NON_INVOCATION_PATTERNS = [
+  /^说的/i,        // "@XXX说的对"
+  /^也是/i,        // "@XXX也是这么想的"
+  /^已经/i,        // "@XXX已经完成了"
+  /^刚刚/i,        // "@XXX刚刚说了"
+  /^之前/i,        // "@XXX之前提到"
 ];
 
 /**
@@ -125,22 +109,21 @@ export function detectAgentInvocation(sourceAgentId, output, conversationId) {
 
 /**
  * 判断 @mention 后的内容是否表示调用意图
+ * 默认只要有 @mention 就是调用意图，除非匹配非调用模式
  * 
  * @param {string} textAfterMention - @mention 后的文本
  * @returns {boolean} - 是否是调用意图
  */
 function isInvocationIntent(textAfterMention) {
   if (!textAfterMention || textAfterMention.length === 0) {
-    return false;
+    // 纯 @mention 也触发（相当于"叫一下"）
+    return true;
   }
   
-  const lowerText = textAfterMention.toLowerCase();
+  // 检查是否匹配非调用模式
+  const isNonInvocation = NON_INVOCATION_PATTERNS.some(pattern => pattern.test(textAfterMention));
   
-  // 检查是否包含任何调用关键词
-  return INVOCATION_KEYWORDS.some(keyword => {
-    const lowerKeyword = keyword.toLowerCase();
-    return lowerText.includes(lowerKeyword);
-  });
+  return !isNonInvocation;
 }
 
 /**

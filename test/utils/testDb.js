@@ -2,10 +2,8 @@
  * 数据库测试隔离设置
  * 解决测试中数据库 schema 冲突问题
  */
-import { open, Database } from 'sqlite';
+import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
-import fs from 'fs/promises';
-import path from 'path';
 
 /**
  * 创建独立的测试数据库实例
@@ -113,10 +111,10 @@ async function initializeSchema(db) {
     // 尝试添加 conversation_id 列，如果不存在
     try {
       await db.exec(`ALTER TABLE a2a_tasks ADD COLUMN conversation_id TEXT`);
-    } catch (error) {
+    } catch {
       // 列已存在，忽略错误
     }
-  } catch (error) {
+  } catch {
     // 表已存在，继续
   }
 }

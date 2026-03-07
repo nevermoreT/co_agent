@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { useGlobalMessages } from '../hooks/useGlobalMessages';
 import { MarkdownRenderer, ThinkingMessage, ToolUseMessage, parseMessageContent } from './MarkdownRenderer';
+import { messageApi } from '../services/api.js';
 import logger from '../utils/logger';
 import './ChatPanel.css';
-
-const API = '/api';
 
 const VISIBLE_MESSAGE_LIMIT = 100;
 
@@ -260,23 +259,14 @@ export default function ChatPanel({
       }
 
       try {
-        const res = await fetch(`${API}/messages`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            role: 'user',
-            content: text,
-            agent_id: agent.id,
-            agent_name: agent.name,
-            task_id: selectedTaskId || null,
-          }),
+        const data = await messageApi.create({
+          role: 'user',
+          content: text,
+          agent_id: agent.id,
+          agent_name: agent.name,
+          task_id: selectedTaskId || null,
         });
-        if (res.ok) {
-          const data = await res.json();
-          addMessage(data);
-        } else {
-          logger.error('[ChatPanel] Failed to save user message:', res.status, res.statusText);
-        }
+        addMessage(data);
       } catch (err) {
         logger.error('[ChatPanel] Error saving user message:', err);
       }
@@ -286,23 +276,14 @@ export default function ChatPanel({
       onSendText(agent.id, textWithoutMention.trim(), selectedTaskId);
     } else {
       try {
-        const res = await fetch(`${API}/messages`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            role: 'user',
-            content: text,
-            agent_id: null,
-            agent_name: null,
-            task_id: selectedTaskId || null,
-          }),
+        const data = await messageApi.create({
+          role: 'user',
+          content: text,
+          agent_id: null,
+          agent_name: null,
+          task_id: selectedTaskId || null,
         });
-        if (res.ok) {
-          const data = await res.json();
-          addMessage(data);
-        } else {
-          logger.error('[ChatPanel] Failed to save note message:', res.status, res.statusText);
-        }
+        addMessage(data);
       } catch (err) {
         logger.error('[ChatPanel] Error saving note message:', err);
       }

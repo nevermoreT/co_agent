@@ -256,56 +256,25 @@ function handleAgentExit(taskId, code, signal, accumulatedOutput, conversationId
   }
 }
 
-/**
- * 检查防护机制
- */
-function checkInvocationGuards(conversationId, sourceAgentId, targetAgentId) {
-  // 1. 检查循环调用
-  const existingCall = db.prepare(`
-    SELECT * FROM a2a_tasks 
-    WHERE session_id = ?
-    AND source_agent_id = ?
-    AND target_agent_id = ?
-    AND status IN ('submitted', 'working')
-  `).get(`conv-${conversationId}`, targetAgentId, sourceAgentId);
-  
-  if (existingCall) {
-    throw new Error(`Circular A2A invocation detected: Agent ${sourceAgentId} -> Agent ${targetAgentId} -> Agent ${sourceAgentId}`);
-  }
-  
-  // 2. 检查调用深度
-  const recentTasks = db.prepare(`
-    SELECT * FROM a2a_tasks 
-    WHERE session_id = ?
-    AND status IN ('submitted', 'working', 'completed')
-    ORDER BY created_at DESC
-    LIMIT 10
-  `).all(`conv-${conversationId}`);
-  
-  // 简单的深度检查：如果最近有超过 3 个 A2A 调用，则拒绝
-  if (recentTasks.length >= 3) {
-    // 检查是否形成了调用链
-    const callChain = buildCallChain(recentTasks, sourceAgentId);
-    if (callChain.length >= 3) {
-      throw new Error(`A2A invocation chain too deep (max 3): ${callChain.join(' -> ')}`);
-    }
-  }
-}
+const MAX_A2A_DEPTH = 5;
 
 /**
- * 构建调用链
+ * 检查防护机制 - 仅限制最大深度，允许循环调用（A <-> B 对话）
  */
-function buildCallChain(tasks, startAgentId) {
-  const chain = [startAgentId];
-  let currentAgentId = startAgentId;
+function checkInvocationGuards(conversationId, sourceAgentId, targetAgentId) {
+  // 统计当前对话中已完成的 A2A 调用次数
+  const recentTasks = db.prepare(`
+    SELECT COUNT(*) as count FROM a2a_tasks 
+    WHERE session_id = ?
+    AND status IN ('submitted', 'working', 'completed')
+  `).get(`conv-${conversationId}`);
   
-  // 向前追溯调用链
-  for (const task of tasks) {
-    if (task.target_agent_id === currentAgentId && !chain.includes(task.source_agent_id)) {
-      chain.unshift(task.source_agent_id);
-      currentAgentId = task.source_agent_id;
-    }
+  const currentDepth = recentTasks?.count || 0;
+  
+  if (currentDepth >= MAX_A2A_DEPTH) {
+    throw new Error(`A2A invocation chain too deep: ${currentDepth} calls already, max ${MAX_A2A_DEPTH}`);
   }
   
-  return chain;
+  logger.log('[AgentInvocationExecutor] A2A depth: %d/%d (Agent %d -> Agent %d)', 
+    currentDepth, MAX_A2A_DEPTH, sourceAgentId, targetAgentId);
 }

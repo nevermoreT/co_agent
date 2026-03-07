@@ -5,9 +5,8 @@
  * organizing tests by feature area and complexity level.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { TestBase, UnitTestBase, IntegrationTestBase } from './base/test-base.js';
-import { factories, mocks, utils } from './utils/test-helpers.js';
+import { describe, it, expect } from 'vitest';
+import { UnitTestBase } from './base/test-base.js';
 
 // Test suite configuration
 const testSuiteConfig = {

@@ -219,7 +219,6 @@ describe('useWs Hook', () => {
 
     it('should handle exit messages', () => {
       const { result } = renderHook(() => useWs());
-      const onExit = vi.fn();
 
       act(() => {
         vi.advanceTimersByTime(0);

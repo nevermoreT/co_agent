@@ -3,8 +3,6 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { TestBase } from '../base/test-base.js';
-import { factories, mocks } from '../utils/test-helpers.js';
 
 describe('A2A Task Manager - Unit Tests', () => {
   let a2aTaskManager;
@@ -82,8 +80,7 @@ describe('A2A Task Manager - Unit Tests', () => {
       conversationId: 101,
     });
 
-    // Record the original update time
-    const originalUpdateTime = task.updatedAt;
+    const _originalUpdateTime = task.updatedAt;
     
     // Wait a bit to ensure time difference
     const startTime = Date.now();

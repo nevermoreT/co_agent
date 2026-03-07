@@ -3,8 +3,8 @@
  * Validates the core functionality that already exists
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { factories, mocks, utils } from './utils/test-helpers.js';
+import { describe, it, expect } from 'vitest';
+import { factories, mocks } from './utils/test-helpers.js';
 
 describe('Current Platform Features', () => {
   describe('Conversation Isolation', () => {
@@ -260,8 +260,6 @@ describe('Current Platform Features', () => {
 
   describe('CLI Process Management', () => {
     it('should handle different CLI commands', () => {
-      const mockRunner = mocks.createMockAgentRunner();
-      
       // Test different command types
       const commands = [
         'node agent.js',
@@ -303,8 +301,8 @@ describe('Current Platform Features', () => {
       
       // Simulate Claude CLI call
       const result = await mockRunner.runClaudeCli(1, 'test prompt', 
-        (stream, data) => {}, 
-        (code, signal) => {}
+        (_stream, _data) => {}, 
+        (_code, _signal) => {}
       );
       
       expect(result).toBeDefined();
@@ -315,8 +313,8 @@ describe('Current Platform Features', () => {
       
       // Simulate Opencode CLI call
       const result = mockRunner.runOpencodeCli(1, 'test prompt',
-        (stream, data) => {},
-        (code, signal) => {}
+        (_stream, _data) => {},
+        (_code, _signal) => {}
       );
       
       expect(result).toBeDefined();

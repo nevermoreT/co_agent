@@ -3,8 +3,7 @@
  * Ensures all A2A components are properly connected and working
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { factories, mocks } from '../utils/test-helpers.js';
+import { describe, it, expect } from 'vitest';
 
 describe('A2A Implementation - Full Validation', () => {
   it('should have A2A Task Manager properly implemented', async () => {
@@ -39,8 +38,7 @@ describe('A2A Implementation - Full Validation', () => {
   });
 
   it('should have database schema properly initialized', async () => {
-    // Import db to ensure schema is initialized
-    const db = await import('../../server/db.js');
+    const _db = await import('../../server/db.js');
     
     // The schema initialization happens in the A2A Task Manager
     const { default: a2aTaskManager } = await import('../../server/services/a2a/a2aTaskManager.js');
@@ -104,9 +102,7 @@ describe('A2A Implementation - Full Validation', () => {
       details: 'Task completed successfully'
     });
     
-    // Cancel task (even though it's completed)
-    const cancelledTask = a2aTaskManager.cancelTask(task.id);
-    // Note: This may return the task if it was found, even if status change isn't applied
+    const _cancelledTask = a2aTaskManager.cancelTask(task.id);
   });
 
   it('should handle multiple concurrent tasks', async () => {

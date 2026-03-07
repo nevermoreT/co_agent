@@ -147,6 +147,11 @@ Actions: `start`, `send`, `stop`, `status`
 - Replace `\n` with spaces in prompts sent to CLI
 - Avoid `<>` in prompts (use `[CONTEXT]` instead)
 
+## Work Rules
+
+- **必须测试**: 修改完代码必须运行测试，确保所有测试通过
+- **Lint 零容忍**: `npm run lint` 不能有 warning 或 error
+
 ## Constraints
 
 - Max 5 agents

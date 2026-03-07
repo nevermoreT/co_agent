@@ -2,7 +2,7 @@
  * Test to validate our test tools and utilities
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { TestBase, UnitTestBase, IntegrationTestBase } from './base/test-base.js';
 import { factories, mocks, utils, waitFor } from './utils/test-helpers.js';
 
