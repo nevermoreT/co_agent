@@ -9,7 +9,8 @@
       "Bash(python3:*)",
       "Bash(awk NR>=380 && NR<=395:*)",
       "Bash(awk NR>=320 && NR<=392:*)",
-      "Bash(awk NR>=30 && NR<=40:*)"
+      "Bash(awk NR>=30 && NR<=40:*)",
+      "Bash(git add:*)"
     ]
   }
 }
