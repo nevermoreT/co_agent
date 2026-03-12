@@ -5,57 +5,27 @@ import SoulConfigPanel from './SoulConfigPanel';
 const API = '/api';
 const MAX_AGENTS = 5;
 
-function formatSessionTime(isoString) {
-  if (!isoString) return '';
-  // 兼容 "YYYY-MM-DD HH:MM:SS" 和 ISO 8601 格式
-  const normalized = isoString.includes('T') ? isoString : isoString.replace(' ', 'T');
-  const date = new Date(normalized);
-  const now = new Date();
-  const diff = now - date;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-  
-  if (minutes < 1) return '刚刚';
-  if (minutes < 60) return `${minutes}分钟前`;
-  if (hours < 24) return `${hours}小时前`;
-  if (days < 7) return `${days}天前`;
-  return date.toLocaleDateString('zh-CN');
-}
-
-function generateFakeTokenStats(sessionId) {
-  const hash = sessionId ? sessionId.split('').reduce((a, c) => a + c.charCodeAt(0), 0) : 0;
-  const inputTokens = 10000 + (hash % 50000);
-  const outputTokens = 100 + (hash % 500);
-  const cachePercent = 85 + (hash % 15);
-  return { inputTokens, outputTokens, cachePercent };
-}
-
 function formatTokens(num) {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
   return num.toString();
 }
 
-export default function RightPanel({
-  agents,
-  runningAgentIds,
-  wsReady,
-  refetchAgents,
-  selectedTaskId,
-}) {
+function generateFakeTokenStats(sessionId) {
+  const hash = sessionId ? String(sessionId).split('').reduce((a, c) => a + c.charCodeAt(0), 0) : 0;
+  return { 
+    inputTokens: 10000 + (hash % 50000), 
+    outputTokens: 100 + (hash % 500), 
+    cachePercent: 85 + (hash % 15) 
+  };
+}
+
+export default function RightPanel({ agents, runningAgentIds, wsReady, refetchAgents, selectedTaskId }) {
   const [stats, setStats] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [agentForm, setAgentForm] = useState(null);
   const [soulConfigAgent, setSoulConfigAgent] = useState(null);
-  const [form, setForm] = useState({
-    name: '',
-    cli_command: '',
-    cli_cwd: '',
-    role: '',
-    responsibilities: '',
-    system_prompt: ''
-  });
+  const [form, setForm] = useState({ name: '', cli_command: '', role: '', responsibilities: '', system_prompt: '' });
 
   useEffect(() => {
     if (!selectedTaskId) {
@@ -63,163 +33,82 @@ export default function RightPanel({
       setSessions([]);
       return;
     }
-    let cancelled = false;
-    
-    fetch(`${API}/stats/messages?task_id=${selectedTaskId}`)
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => {
-        if (!cancelled) setStats(data);
-      })
-      .catch(() => { if (!cancelled) setStats(null); });
-    
-    fetch(`${API}/sessions/task/${selectedTaskId}`)
-      .then((res) => res.ok ? res.json() : [])
-      .then((data) => {
-        if (!cancelled) setSessions(Array.isArray(data) ? data : []);
-      })
-      .catch(() => { if (!cancelled) setSessions([]); });
-    
-    return () => { cancelled = true; };
+    fetch(`${API}/stats/messages?task_id=${selectedTaskId}`).then(r => r.json()).then(setStats).catch(() => setStats(null));
+    fetch(`${API}/sessions/task/${selectedTaskId}`).then(r => r.json()).then(setSessions).catch(() => setSessions([]));
   }, [selectedTaskId]);
 
-  const openNewAgent = () => {
-    setAgentForm('new');
-    setForm({ 
-      name: '', 
-      cli_command: '', 
-      cli_cwd: '',
-      role: '',
-      responsibilities: '',
-      system_prompt: ''
-    });
-  };
-
+  const openNewAgent = () => { setAgentForm('new'); setForm({ name: '', cli_command: '', role: '', responsibilities: '', system_prompt: '' }); };
   const openEditAgent = (a) => {
     setAgentForm(a.id);
-    let responsibilities;
-    try {
-      responsibilities = JSON.parse(a.responsibilities || '[]');
-    } catch {
-      responsibilities = [];
-    }
+    let resp = []; try { resp = JSON.parse(a.responsibilities); } catch {}
     setForm({ 
       name: a.name, 
       cli_command: a.cli_command, 
-      cli_cwd: a.cli_cwd || '',
-      role: a.role || '',
-      responsibilities: responsibilities.join('\n'),
-      system_prompt: a.system_prompt || ''
+      role: a.role, 
+      responsibilities: Array.isArray(resp) ? resp.join('\n') : '', 
+      system_prompt: a.system_prompt || '' 
     });
   };
 
   const saveAgent = async () => {
-    const responsibilitiesArray = form.responsibilities
-      .split('\n')
-      .map(r => r.trim())
-      .filter(r => r);
-    
-    const submitData = {
-      ...form,
-      responsibilities: responsibilitiesArray
-    };
-    
-    if (agentForm === 'new') {
-      const res = await fetch(`${API}/agents`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(submitData),
-      });
-      if (res.ok) {
-        refetchAgents();
-        setAgentForm(null);
-      } else {
-        const err = await res.json();
-        alert(err.error || '保存失败');
-      }
-    } else {
-      const res = await fetch(`${API}/agents/${agentForm}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(submitData),
-      });
-      if (res.ok) {
-        refetchAgents();
-        setAgentForm(null);
-      } else {
-        const err = await res.json();
-        alert(err.error || '保存失败');
-      }
-    }
+    const data = { ...form, responsibilities: form.responsibilities.split('\n').filter(r => r) };
+    const method = agentForm === 'new' ? 'POST' : 'PATCH';
+    const url = agentForm === 'new' ? `${API}/agents` : `${API}/agents/${agentForm}`;
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    if (res.ok) { refetchAgents(); setAgentForm(null); }
   };
 
   const deleteAgent = async (id) => {
-    if (!confirm('确定删除该 Agent？')) return;
-    const res = await fetch(`${API}/agents/${id}`, { method: 'DELETE' });
-    if (res.ok) refetchAgents();
-    setAgentForm(null);
+    if (window.confirm('确定要删除这个 Agent 吗？')) {
+      const res = await fetch(`${API}/agents/${id}`, { method: 'DELETE' });
+      if (res.ok) refetchAgents();
+    }
   };
-
-  const runningCount = runningAgentIds.length;
-  const mode = runningCount > 0 ? '处理中' : '空闲';
 
   return (
     <div className="right-panel">
       <div className="right-panel-content">
         <section className="right-section">
-          <h3>状态</h3>
-          <div className="status-bar">
-            <div className="status-item">
-              <span className="status-label">当前模式</span>
-              <span className={`status-value ${runningCount > 0 ? 'active' : ''}`}>{mode}</span>
+          <h3>系统状态</h3>
+          <div className="status-cards-grid">
+            <div className="status-card">
+              <span className="status-card-label">服务连接</span>
+              <div className="status-card-value">
+                <span className={`status-dot ${wsReady ? 'connected' : ''}`} />
+                {wsReady ? '就绪' : '离线'}
+              </div>
             </div>
-            <div className="status-item">
-              <span className="status-label">活跃 Agent</span>
-              <span className="status-value">{runningCount}</span>
-            </div>
-            <div className="status-item">
-              <span className="status-label">WebSocket</span>
-              <span className={`status-dot ${wsReady ? 'connected' : ''}`} />
-              <span className="status-value">{wsReady ? '已连接' : '未连接'}</span>
+            <div className="status-card">
+              <span className="status-card-label">活跃节点</span>
+              <div className="status-card-value">{runningAgentIds.length}</div>
             </div>
           </div>
         </section>
 
-        {stats && selectedTaskId && (
+        {stats && (
           <section className="right-section">
-            <h3>消息统计</h3>
-            <div className="stats-grid">
-              <div className="stat-item">
-                <span className="stat-value">{stats.total}</span>
-                <span className="stat-label">总数</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-value">{stats.byRole?.user || 0}</span>
-                <span className="stat-label">用户</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-value">{stats.byRole?.assistant || 0}</span>
-                <span className="stat-label">AI</span>
-              </div>
+            <h3>本次对话统计</h3>
+            <div className="stats-cards-grid">
+              <div className="stat-card"><span className="stat-card-value">{stats.total}</span><span className="stat-card-label">消息</span></div>
+              <div className="stat-card"><span className="stat-card-value">{stats.byRole?.assistant || 0}</span><span className="stat-card-label">AI</span></div>
+              <div className="stat-card"><span className="stat-card-value">{stats.byRole?.user || 0}</span><span className="stat-card-label">用户</span></div>
             </div>
           </section>
         )}
 
-        {selectedTaskId && (
+        {selectedTaskId && sessions.length > 0 && (
           <section className="right-section">
             <div className="section-header">
               <h3>Session Chain</h3>
-              <span className="session-count">{sessions.length} sessions</span>
+              <span className="session-count">{sessions.length} 节点</span>
             </div>
             <div className="session-list">
-              {sessions.length === 0 && (
-                <div className="session-empty">暂无活跃会话</div>
-              )}
               {sessions.map((s) => {
                 const tokenStats = generateFakeTokenStats(s.session_id);
                 const isActive = runningAgentIds.includes(s.agent_id);
                 
                 return (
-                  <div key={s.agent_id} className={`session-item ${isActive ? 'active' : ''}`}>
+                  <div key={s.session_id} className={`session-item ${isActive ? 'active' : ''}`}>
                     <div className="session-header">
                       <div className="session-status">
                         <span className={`session-dot ${isActive ? 'running' : ''}`} />
@@ -228,10 +117,7 @@ export default function RightPanel({
                       <span className="session-number">#{s.agent_id}</span>
                     </div>
                     <div className="session-name">{s.agent_name}</div>
-                    <div className="session-id">{s.session_id?.substring(0, 8)}...{s.session_id?.substring(s.session_id.length - 4)}</div>
-                    <div className="session-meta">
-                      <span>Started {formatSessionTime(s.created_at)}</span>
-                    </div>
+                    <div className="session-id">{String(s.session_id || '').substring(0, 8)}...</div>
                     <div className="session-stats">
                       <div className="session-stat">
                         <span className="session-stat-label">Input</span>
@@ -256,92 +142,72 @@ export default function RightPanel({
           </section>
         )}
 
+        {selectedTaskId && (
+          <section className="right-section info-section">
+            <h3>对话详情</h3>
+            <div className="info-card">
+              <div className="info-row">
+                <span className="info-label">Thread ID:</span>
+                <span className="info-value">thread_{String(selectedTaskId).substring(0, 8)}</span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">心里话:</span>
+                <button className="info-toggle">显示调试</button>
+              </div>
+              <div className="info-row">
+                <span className="info-label">悄悄话:</span>
+                <button className="info-btn-outline">揭秘全部</button>
+              </div>
+            </div>
+          </section>
+        )}
+
         <section className="right-section">
-          <h3>Agent 列表</h3>
-          <div className="right-agent-list-header">
-            <span>{agents.length} / {MAX_AGENTS}</span>
-            {agents.length < MAX_AGENTS && (
-              <button type="button" className="btn btn-sm btn-primary" onClick={openNewAgent}>
-                添加
-              </button>
-            )}
+          <div className="section-header">
+            <h3>Agent 成员</h3>
+            <button className="btn btn-sm btn-primary" onClick={openNewAgent}>+ 添加成员</button>
           </div>
-          {agents.length > 0 && (
-            <ul className="right-agent-list">
-              {agents.map((a) => (
-                <li key={a.id}>
-                  <span>{a.name}{a.builtin_key && <span className="right-badge right-badge-builtin">内置</span>}</span>
-                  <span className="right-agent-item-actions">
-                    {runningAgentIds.includes(a.id) && <span className="right-badge running">运行中</span>}
-                    <button type="button" className="btn btn-sm" onClick={() => setSoulConfigAgent(a)}>Soul</button>
-                    <button type="button" className="btn btn-sm" onClick={() => openEditAgent(a)}>编辑</button>
-                    {!a.builtin_key && (
-                      <button type="button" className="btn btn-sm btn-danger" onClick={() => deleteAgent(a.id)}>删除</button>
-                    )}
-                  </span>
+          <ul className="right-agent-list">
+            {agents.map((a) => {
+              const active = runningAgentIds.includes(a.id);
+              return (
+                <li key={a.id} className={active ? 'agent-active' : ''}>
+                  <div className="agent-item-main">
+                    <div className="agent-avatar">{a.name[0].toUpperCase()}</div>
+                    <div className="agent-info">
+                      <div className="agent-name">{a.name}</div>
+                      <div className="agent-role">{a.role || 'Assistant'}</div>
+                    </div>
+                  </div>
+                  <div className="agent-item-actions">
+                    <button onClick={() => setSoulConfigAgent(a)}>Soul</button>
+                    <button onClick={() => openEditAgent(a)}>编辑</button>
+                    {!a.builtin_key && <button className="danger" onClick={() => deleteAgent(a.id)}>删除</button>}
+                  </div>
                 </li>
-              ))}
-            </ul>
-          )}
+              );
+            })}
+          </ul>
         </section>
       </div>
 
       {agentForm && (
-        <div className="right-modal">
-          <div className="right-modal-content right-modal-large">
-            <h3>{agentForm === 'new' ? '添加 Agent' : '编辑 Agent'}</h3>
-            
+        <div className="right-modal" onClick={() => setAgentForm(null)}>
+          <div className="right-modal-content" onClick={e => e.stopPropagation()}>
+            <h3>{agentForm === 'new' ? '新增 Agent' : '编辑 Agent'}</h3>
             <div className="form-section">
-              <h4>基本信息</h4>
               <label>名称</label>
-              <input
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Agent 名称"
-              />
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Agent 名称" />
               <label>CLI 命令</label>
-              <input
-                value={form.cli_command}
-                onChange={(e) => setForm((f) => ({ ...f, cli_command: e.target.value }))}
-                placeholder="例如: node agent.js 或 python -u agent.py"
-                readOnly={!!(typeof agentForm === 'number' && agents.find((ag) => ag.id === agentForm)?.builtin_key)}
-              />
-              <label>工作目录（可选）</label>
-              <input
-                value={form.cli_cwd}
-                onChange={(e) => setForm((f) => ({ ...f, cli_cwd: e.target.value }))}
-                placeholder="留空则使用当前目录"
-                readOnly={!!(typeof agentForm === 'number' && agents.find((ag) => ag.id === agentForm)?.builtin_key)}
-              />
-            </div>
-            
-            <div className="form-section">
-              <h4>角色配置（Phase 3.1）</h4>
+              <input value={form.cli_command} onChange={(e) => setForm({ ...form, cli_command: e.target.value })} placeholder="例如: node agent.js" />
               <label>角色</label>
-              <input
-                value={form.role}
-                onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-                placeholder="如：架构师、前端专家、测试工程师"
-              />
-              <label>职责（每行一个）</label>
-              <textarea
-                value={form.responsibilities}
-                onChange={(e) => setForm((f) => ({ ...f, responsibilities: e.target.value }))}
-                placeholder="代码审查&#10;架构设计&#10;技术决策"
-                rows={4}
-              />
-              <label>自定义 System Prompt</label>
-              <textarea
-                value={form.system_prompt}
-                onChange={(e) => setForm((f) => ({ ...f, system_prompt: e.target.value }))}
-                placeholder="输入自定义的系统级指令..."
-                rows={4}
-              />
+              <input value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="例如: 架构师" />
+              <label>职责 (每行一个)</label>
+              <textarea value={form.responsibilities} onChange={(e) => setForm({ ...form, responsibilities: e.target.value })} rows={3} placeholder="输入职责..." />
             </div>
-
             <div className="right-modal-actions">
-              <button type="button" className="btn" onClick={() => setAgentForm(null)}>取消</button>
-              <button type="button" className="btn btn-primary" onClick={saveAgent}>保存</button>
+              <button className="btn" onClick={() => setAgentForm(null)}>取消</button>
+              <button className="btn btn-primary" onClick={saveAgent}>保存</button>
             </div>
           </div>
         </div>
@@ -350,13 +216,10 @@ export default function RightPanel({
       {soulConfigAgent && (
         <>
           <div className="soul-config-overlay" onClick={() => setSoulConfigAgent(null)} />
-          <SoulConfigPanel
-            agent={soulConfigAgent}
-            onSave={() => {
-              setSoulConfigAgent(null);
-              refetchAgents();
-            }}
-            onClose={() => setSoulConfigAgent(null)}
+          <SoulConfigPanel 
+            agent={soulConfigAgent} 
+            onClose={() => setSoulConfigAgent(null)} 
+            onSave={() => { setSoulConfigAgent(null); refetchAgents(); }} 
           />
         </>
       )}
