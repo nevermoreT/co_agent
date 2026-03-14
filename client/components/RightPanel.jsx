@@ -3,7 +3,6 @@ import './RightPanel.css';
 import SoulConfigPanel from './SoulConfigPanel';
 
 const API = '/api';
-const MAX_AGENTS = 5;
 
 function formatTokens(num) {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -40,7 +39,7 @@ export default function RightPanel({ agents, runningAgentIds, wsReady, refetchAg
   const openNewAgent = () => { setAgentForm('new'); setForm({ name: '', cli_command: '', role: '', responsibilities: '', system_prompt: '' }); };
   const openEditAgent = (a) => {
     setAgentForm(a.id);
-    let resp = []; try { resp = JSON.parse(a.responsibilities); } catch {}
+    let resp = []; try { resp = JSON.parse(a.responsibilities); } catch { /* ignore parse errors */ }
     setForm({ 
       name: a.name, 
       cli_command: a.cli_command, 

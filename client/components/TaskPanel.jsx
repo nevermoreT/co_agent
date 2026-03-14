@@ -23,6 +23,19 @@ export default function TaskPanel({ selectedTaskId, onSelectTask, tasks, refetch
   const [showNewModal, setShowNewModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [previews, setPreviews] = useState({});
+  const [contextMenu, setContextMenu] = useState(null);
+  const [editingTask, setEditingTask] = useState(null);
+  const contextRef = useRef(null);
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (contextRef.current && !contextRef.current.contains(e.target)) {
+        setContextMenu(null);
+      }
+    };
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
 
   useEffect(() => {
     tasks.forEach(async (t) => {
@@ -33,7 +46,7 @@ export default function TaskPanel({ selectedTaskId, onSelectTask, tasks, refetch
             const data = await res.json();
             if (data) setPreviews((p) => ({ ...p, [t.id]: data }));
           }
-        } catch {}
+        } catch { /* ignore fetch errors */ }
       }
     });
   }, [tasks]);
@@ -58,11 +71,71 @@ export default function TaskPanel({ selectedTaskId, onSelectTask, tasks, refetch
     }
   };
 
+  const handleContextMenu = (e, task) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      taskId: task.id,
+      task,
+      x: e.clientX,
+      y: e.clientY,
+    });
+  };
+
+  const startEdit = (task) => {
+    setEditingTask(task.id);
+    setNewTitle(task.title);
+    setContextMenu(null);
+    setShowNewModal(true);
+  };
+
+  const updateTask = async () => {
+    if (!newTitle.trim()) return;
+    try {
+      const res = await fetch(`${API}/tasks/${editingTask}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      });
+      if (res.ok) {
+        setNewTitle('');
+        setEditingTask(null);
+        setShowNewModal(false);
+        refetchTasks();
+      }
+    } catch (err) {
+      console.error('Failed to update task:', err);
+    }
+  };
+
+  const removeTask = async (id) => {
+    if (!window.confirm('确定删除该对话？所有消息将被删除。')) return;
+    const res = await fetch(`${API}/tasks/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      refetchTasks();
+      if (selectedTaskId === id) onSelectTask(null);
+      setContextMenu(null);
+    }
+  };
+
+  const archiveTask = async (id) => {
+    const res = await fetch(`${API}/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_archived: true }),
+    });
+    if (res.ok) {
+      refetchTasks();
+      if (selectedTaskId === id) onSelectTask(null);
+      setContextMenu(null);
+    }
+  };
+
   return (
     <div className="task-panel">
       <header className="task-panel-header">
         <h2>对话列表</h2>
-        <button className="btn-new-task" onClick={() => setShowNewModal(true)}>+</button>
+        <button className="btn-new-task" onClick={() => { setEditingTask(null); setNewTitle(''); setShowNewModal(true); }}>+</button>
       </header>
       <div className="task-search">
         <input type="text" placeholder="搜索对话..." />
@@ -78,6 +151,7 @@ export default function TaskPanel({ selectedTaskId, onSelectTask, tasks, refetch
               key={t.id}
               className={`task-item ${selectedTaskId === t.id ? 'selected' : ''}`}
               onClick={() => onSelectTask(t.id)}
+              onContextMenu={(e) => handleContextMenu(e, t)}
             >
               <div className="task-item-content">
                 <div className="task-item-title">{t.title}</div>
@@ -94,20 +168,40 @@ export default function TaskPanel({ selectedTaskId, onSelectTask, tasks, refetch
         })}
       </div>
 
+      {contextMenu && (
+        <div
+          ref={contextRef}
+          className="context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button type="button" onClick={() => startEdit(contextMenu.task)}>
+            重命名
+          </button>
+          <button type="button" onClick={() => archiveTask(contextMenu.taskId)}>
+            归档
+          </button>
+          <button type="button" className="danger" onClick={() => removeTask(contextMenu.taskId)}>
+            删除
+          </button>
+        </div>
+      )}
+
       {showNewModal && (
-        <div className="task-modal" onClick={() => setShowNewModal(false)}>
+        <div className="task-modal" onClick={() => { setShowNewModal(false); setEditingTask(null); }}>
           <div className="task-modal-content" onClick={e => e.stopPropagation()}>
-            <h3>新建对话</h3>
+            <h3>{editingTask ? '重命名对话' : '新建对话'}</h3>
             <input
               autoFocus
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder="输入对话标题..."
-              onKeyDown={(e) => e.key === 'Enter' && createTask()}
+              onKeyDown={(e) => e.key === 'Enter' && (editingTask ? updateTask() : createTask())}
             />
             <div className="task-modal-actions">
-              <button className="btn" onClick={() => setShowNewModal(false)}>取消</button>
-              <button className="btn btn-primary" onClick={createTask}>创建</button>
+              <button className="btn" onClick={() => { setShowNewModal(false); setEditingTask(null); }}>取消</button>
+              <button className="btn btn-primary" onClick={editingTask ? updateTask : createTask}>
+                {editingTask ? '保存' : '创建'}
+              </button>
             </div>
           </div>
         </div>

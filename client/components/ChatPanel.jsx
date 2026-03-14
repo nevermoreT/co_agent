@@ -1,11 +1,10 @@
-import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
+import { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { useGlobalMessages } from '../hooks/useGlobalMessages';
 import { MarkdownRenderer, ThinkingMessage, ToolUseMessage, parseMessageContent } from './MarkdownRenderer';
 import logger from '../utils/logger';
 import './ChatPanel.css';
 
 const API = '/api';
-const VISIBLE_MESSAGE_LIMIT = 100;
 
 // 获取头像首字母和背景色
 function getAvatarStyle(name) {
@@ -35,7 +34,7 @@ const ChatMessage = memo(function ChatMessage({ m }) {
   }
 
   let toolCalls = [];
-  let textParts = [];
+  let textParts;
   if (m.metadata) {
     try {
       const meta = typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata;
@@ -120,9 +119,7 @@ export default function ChatPanel({
   const [mentionState, setMentionState] = useState({ active: false, query: '', start: 0, selectedIndex: 0 });
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
-  const { messages, refetch, addMessage } = useGlobalMessages(selectedTaskId);
-
-  const sortedAgents = useMemo(() => [...agents].sort((a, b) => b.name.length - a.name.length), [agents]);
+  const { messages, addMessage } = useGlobalMessages(selectedTaskId);
 
   const filteredAgents = useMemo(() => {
     if (!mentionState.active) return [];
