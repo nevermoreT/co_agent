@@ -63,7 +63,7 @@ export default function TaskPanel({ selectedTaskId, onSelectTask, tasks, refetch
         const data = await res.json();
         setNewTitle('');
         setShowNewModal(false);
-        refetchTasks();
+        await refetchTasks();
         onSelectTask(data.id);
       }
     } catch (err) {
@@ -101,7 +101,7 @@ export default function TaskPanel({ selectedTaskId, onSelectTask, tasks, refetch
         setNewTitle('');
         setEditingTask(null);
         setShowNewModal(false);
-        refetchTasks();
+        await refetchTasks();
       }
     } catch (err) {
       console.error('Failed to update task:', err);
@@ -112,7 +112,7 @@ export default function TaskPanel({ selectedTaskId, onSelectTask, tasks, refetch
     if (!window.confirm('确定删除该对话？所有消息将被删除。')) return;
     const res = await fetch(`${API}/tasks/${id}`, { method: 'DELETE' });
     if (res.ok) {
-      refetchTasks();
+      await refetchTasks();
       if (selectedTaskId === id) onSelectTask(null);
       setContextMenu(null);
     }
@@ -125,7 +125,7 @@ export default function TaskPanel({ selectedTaskId, onSelectTask, tasks, refetch
       body: JSON.stringify({ is_archived: true }),
     });
     if (res.ok) {
-      refetchTasks();
+      await refetchTasks();
       if (selectedTaskId === id) onSelectTask(null);
       setContextMenu(null);
     }

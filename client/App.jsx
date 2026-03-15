@@ -361,7 +361,7 @@ export default function App() {
         <TaskPanel
           tasks={tasks}
           loading={tasksLoading}
-          refetch={refetchTasks}
+          refetchTasks={refetchTasks}
           selectedTaskId={selectedConversationId}
           onSelectTask={setSelectedConversationId}
         />
