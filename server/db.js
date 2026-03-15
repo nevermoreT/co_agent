@@ -33,6 +33,8 @@ db.exec(`
     name TEXT NOT NULL,
     cli_command TEXT NOT NULL,
     cli_cwd TEXT,
+    builtin_key TEXT,
+    session_id TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   );
 
@@ -218,6 +220,14 @@ try {
 // A2A: agents 状态（用于 /.well-known/agent.json 等）
 try {
   db.run("ALTER TABLE agents ADD COLUMN status TEXT DEFAULT 'active'");
+  save();
+} catch {
+  // column already exists
+}
+
+// builtin_key for seeding built-in agents
+try {
+  db.run('ALTER TABLE agents ADD COLUMN builtin_key TEXT');
   save();
 } catch {
   // column already exists
