@@ -159,7 +159,7 @@ export function upsertKnowledge({
 
 /**
  * 构建 Agent 上下文，包含最近的对话历史
- * 格式：用户问AgentA xxx, AgentA回答 yyy; 用户问AgentB zzz, AgentB回答 www
+ * 当前 Agent 的对话使用第一人称（"你之前回答了..."），其他 Agent 使用第三人称
  *
  * 注意：避免使用括号()和引号""，这些字符在 Windows shell 中会导致问题
  * 详见 doc/bugfix-windows-shell-special-chars.md
@@ -169,9 +169,13 @@ export function buildAgentContext(agentId, conversationId) {
     return '';
   }
 
+  // 获取当前 Agent 的名称
+  const currentAgent = db.prepare('SELECT name FROM agents WHERE id = ?').get(agentId);
+  const currentAgentName = currentAgent?.name || '';
+
   // 从 global_messages 获取最近的对话（包含问答对）
   const recentMessages = db.prepare(`
-    SELECT role, content, agent_name
+    SELECT role, content, agent_name, agent_id
     FROM global_messages
     WHERE task_id = ?
     ORDER BY created_at DESC
@@ -186,6 +190,7 @@ export function buildAgentContext(agentId, conversationId) {
   recentMessages.reverse();
 
   // 构建对话摘要，将问答配对
+  // 当前 Agent 使用第一人称，其他 Agent 使用第三人称
   const dialogues = [];
   for (let i = 0; i < recentMessages.length; i++) {
     const msg = recentMessages[i];
@@ -197,6 +202,7 @@ export function buildAgentContext(agentId, conversationId) {
       }
 
       const targetAgent = msg.agent_name || '未知';
+      const isTargetingSelf = targetAgent === currentAgentName || Number(msg.agent_id) === agentId;
 
       // 查找下一条是否是对应的回答
       const nextMsg = recentMessages[i + 1];
@@ -206,10 +212,22 @@ export function buildAgentContext(agentId, conversationId) {
           answer = answer.substring(0, 100) + '...';
         }
         const responder = nextMsg.agent_name || '未知';
-        dialogues.push(`用户问${targetAgent}: ${question}, ${responder}回答: ${answer}`);
+        const isResponderSelf = responder === currentAgentName || Number(nextMsg.agent_id) === agentId;
+
+        if (isTargetingSelf || isResponderSelf) {
+          // 当前 Agent 参与的对话用第一人称
+          dialogues.push(`用户问你: ${question}, 你回答: ${answer}`);
+        } else {
+          // 其他 Agent 的对话用第三人称
+          dialogues.push(`用户问${targetAgent}: ${question}, ${responder}回答: ${answer}`);
+        }
         i++; // 跳过已处理的回答
       } else {
-        dialogues.push(`用户问${targetAgent}: ${question}`);
+        if (isTargetingSelf) {
+          dialogues.push(`用户问你: ${question}`);
+        } else {
+          dialogues.push(`用户问${targetAgent}: ${question}`);
+        }
       }
     }
   }

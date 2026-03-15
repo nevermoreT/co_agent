@@ -19,11 +19,12 @@ function formatTime(isoString) {
   return date.toLocaleDateString('zh-CN');
 }
 
-export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onSelectTask }) {
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ title: '', group_name: '' });
-  const [contextMenu, setContextMenu] = useState(null);
+export default function TaskPanel({ selectedTaskId, onSelectTask, tasks, refetchTasks }) {
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
   const [previews, setPreviews] = useState({});
+  const [contextMenu, setContextMenu] = useState(null);
+  const [editingTask, setEditingTask] = useState(null);
   const contextRef = useRef(null);
 
   useEffect(() => {
@@ -43,62 +44,30 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
           const res = await fetch(`${API}/tasks/${t.id}/preview`);
           if (res.ok) {
             const data = await res.json();
-            if (data) {
-              setPreviews((p) => ({ ...p, [t.id]: data }));
-            }
+            if (data) setPreviews((p) => ({ ...p, [t.id]: data }));
           }
-        } catch {
-          // ignore
-        }
+        } catch { /* ignore fetch errors */ }
       }
     });
   }, [tasks]);
 
-  const openNew = () => {
-    setEditing('new');
-    setForm({ title: '', group_name: '' });
-  };
-
-  const closeEdit = () => {
-    setEditing(null);
-    setForm({ title: '', group_name: '' });
-  };
-
-  const save = async () => {
-    if (!form.title.trim()) return;
-    
-    if (editing === 'new') {
+  const createTask = async () => {
+    if (!newTitle.trim()) return;
+    try {
       const res = await fetch(`${API}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: form.title, group_name: form.group_name || null }),
+        body: JSON.stringify({ title: newTitle }),
       });
       if (res.ok) {
         const data = await res.json();
-        refetch();
-        closeEdit();
+        setNewTitle('');
+        setShowNewModal(false);
+        refetchTasks();
         onSelectTask(data.id);
       }
-    } else if (editing != null && editing !== 'new') {
-      const res = await fetch(`${API}/tasks/${editing}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: form.title, group_name: form.group_name || null }),
-      });
-      if (res.ok) {
-        refetch();
-        closeEdit();
-      }
-    }
-  };
-
-  const remove = async (id) => {
-    if (!confirm('确定删除该对话？所有消息将被删除。')) return;
-    const res = await fetch(`${API}/tasks/${id}`, { method: 'DELETE' });
-    if (res.ok) {
-      refetch();
-      if (selectedTaskId === id) onSelectTask(null);
-      setContextMenu(null);
+    } catch (err) {
+      console.error('Failed to create task:', err);
     }
   };
 
@@ -114,9 +83,39 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
   };
 
   const startEdit = (task) => {
-    setEditing(task.id);
-    setForm({ title: task.title, group_name: task.group_name || '' });
+    setEditingTask(task.id);
+    setNewTitle(task.title);
     setContextMenu(null);
+    setShowNewModal(true);
+  };
+
+  const updateTask = async () => {
+    if (!newTitle.trim()) return;
+    try {
+      const res = await fetch(`${API}/tasks/${editingTask}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      });
+      if (res.ok) {
+        setNewTitle('');
+        setEditingTask(null);
+        setShowNewModal(false);
+        refetchTasks();
+      }
+    } catch (err) {
+      console.error('Failed to update task:', err);
+    }
+  };
+
+  const removeTask = async (id) => {
+    if (!window.confirm('确定删除该对话？所有消息将被删除。')) return;
+    const res = await fetch(`${API}/tasks/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      refetchTasks();
+      if (selectedTaskId === id) onSelectTask(null);
+      setContextMenu(null);
+    }
   };
 
   const archiveTask = async (id) => {
@@ -126,73 +125,48 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
       body: JSON.stringify({ is_archived: true }),
     });
     if (res.ok) {
-      refetch();
+      refetchTasks();
       if (selectedTaskId === id) onSelectTask(null);
       setContextMenu(null);
     }
   };
 
-  const groupedTasks = tasks.reduce((acc, t) => {
-    const group = t.group_name || '默认';
-    if (!acc[group]) acc[group] = [];
-    acc[group].push(t);
-    return acc;
-  }, {});
-
   return (
     <div className="task-panel">
       <header className="task-panel-header">
-        <h2>对话</h2>
-        <button type="button" className="btn-new-task" onClick={openNew} title="新建对话">
-          +
-        </button>
+        <h2>对话列表</h2>
+        <button className="btn-new-task" onClick={() => { setEditingTask(null); setNewTitle(''); setShowNewModal(true); }}>+</button>
       </header>
-      
-      {loading ? (
-        <div className="task-panel-loading">加载中...</div>
-      ) : (
-        <div className="task-list">
-          {Object.entries(groupedTasks).map(([group, groupTasks]) => (
-            <div key={group} className="task-group">
-              <div className="task-group-header">{group}</div>
-              {groupTasks.map((t) => {
-                const preview = previews[t.id];
-                const previewText = preview?.content 
-                  ? preview.content.substring(0, 30) + (preview.content.length > 30 ? '...' : '')
-                  : '';
-                  
-                return (
-                  <div
-                    key={t.id}
-                    className={`task-item ${selectedTaskId === t.id ? 'selected' : ''}`}
-                    onClick={() => onSelectTask(t.id)}
-                    onContextMenu={(e) => handleContextMenu(e, t)}
-                  >
-                    <div className="task-item-content">
-                      <div className="task-item-title">{t.title}</div>
-                      {previewText && (
-                        <div className="task-item-preview">{previewText}</div>
-                      )}
-                      <div className="task-item-meta">
-                        <span className="task-item-time">{formatTime(t.last_activity_at || t.created_at)}</span>
-                        {t.message_count > 0 && (
-                          <span className="task-item-count">{t.message_count}条</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+      <div className="task-search">
+        <input type="text" placeholder="搜索对话..." />
+      </div>
+      <div className="task-list">
+        {tasks.map((t) => {
+          const preview = previews[t.id];
+          const previewText = preview?.content 
+            ? preview.content.substring(0, 40) + (preview.content.length > 40 ? '...' : '')
+            : '';
+          return (
+            <div
+              key={t.id}
+              className={`task-item ${selectedTaskId === t.id ? 'selected' : ''}`}
+              onClick={() => onSelectTask(t.id)}
+              onContextMenu={(e) => handleContextMenu(e, t)}
+            >
+              <div className="task-item-content">
+                <div className="task-item-title">{t.title}</div>
+                {previewText && <div className="task-item-preview">{previewText}</div>}
+                <div className="task-item-footer">
+                  <span className="task-item-time">{formatTime(t.last_activity_at || t.created_at)}</span>
+                  {t.message_count > 0 && (
+                    <span className="task-item-count">{t.message_count}条</span>
+                  )}
+                </div>
+              </div>
             </div>
-          ))}
-          
-          {tasks.length === 0 && (
-            <div className="task-panel-empty">
-              暂无对话
-            </div>
-          )}
-        </div>
-      )}
+          );
+        })}
+      </div>
 
       {contextMenu && (
         <div
@@ -206,41 +180,27 @@ export default function TaskPanel({ tasks, loading, refetch, selectedTaskId, onS
           <button type="button" onClick={() => archiveTask(contextMenu.taskId)}>
             归档
           </button>
-          <button type="button" className="danger" onClick={() => remove(contextMenu.taskId)}>
+          <button type="button" className="danger" onClick={() => removeTask(contextMenu.taskId)}>
             删除
           </button>
         </div>
       )}
 
-      {editing && (
-        <div className="task-modal" onClick={closeEdit}>
-          <div className="task-modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>{editing === 'new' ? '新建对话' : '重命名对话'}</h3>
-            <label>标题</label>
+      {showNewModal && (
+        <div className="task-modal" onClick={() => { setShowNewModal(false); setEditingTask(null); }}>
+          <div className="task-modal-content" onClick={e => e.stopPropagation()}>
+            <h3>{editingTask ? '重命名对话' : '新建对话'}</h3>
             <input
-              value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-              placeholder="对话标题"
               autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && save()}
-            />
-            <label>分组（可选）</label>
-            <input
-              value={form.group_name}
-              onChange={(e) => setForm((f) => ({ ...f, group_name: e.target.value }))}
-              placeholder="分组名称"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="输入对话标题..."
+              onKeyDown={(e) => e.key === 'Enter' && (editingTask ? updateTask() : createTask())}
             />
             <div className="task-modal-actions">
-              <button type="button" className="btn" onClick={closeEdit}>
-                取消
-              </button>
-              <button 
-                type="button" 
-                className="btn btn-primary" 
-                onClick={save}
-                disabled={!form.title.trim()}
-              >
-                {editing === 'new' ? '创建' : '保存'}
+              <button className="btn" onClick={() => { setShowNewModal(false); setEditingTask(null); }}>取消</button>
+              <button className="btn btn-primary" onClick={editingTask ? updateTask : createTask}>
+                {editingTask ? '保存' : '创建'}
               </button>
             </div>
           </div>

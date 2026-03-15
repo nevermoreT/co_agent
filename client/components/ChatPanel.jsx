@@ -5,110 +5,116 @@ import logger from '../utils/logger';
 import './ChatPanel.css';
 
 const API = '/api';
-
 const VISIBLE_MESSAGE_LIMIT = 100;
 
-// 单条消息组件，使用 memo 避免不必要的重渲染
+// 获取头像首字母和背景色
+function getAvatarStyle(name) {
+  if (!name) return { initial: '?', color: '#999' };
+  const colors = ['#d96c5a', '#4db6a3', '#6d83f5', '#f0a500', '#8b9cf5'];
+  const index = name.length % colors.length;
+  return {
+    initial: name.charAt(0).toUpperCase(),
+    backgroundColor: colors[index]
+  };
+}
+
+function formatMessageTime(isoString) {
+  if (!isoString) return '刚刚';
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
+
 const ChatMessage = memo(function ChatMessage({ m }) {
-  // Thinking 消息
   if (m.message_type === 'thinking') {
-    return (
-      <ThinkingMessage
-        content={m.content}
-        agentName={m.agent_name || 'Agent'}
-      />
-    );
+    return <ThinkingMessage content={m.content} agentName={m.agent_name || 'Agent'} />;
   }
 
-  // 优先从 metadata 读取 tool_calls，否则解析 content
   let toolCalls = [];
   let textParts;
-  
   if (m.metadata) {
     try {
       const meta = typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata;
-      if (meta.tool_calls && Array.isArray(meta.tool_calls)) {
-        toolCalls = meta.tool_calls;
-      }
-    } catch {
-      // metadata 解析失败，回退到 content 解析
+      if (meta.tool_calls) toolCalls = meta.tool_calls;
+    } catch (e) {
+      logger.warn('Failed to parse metadata', e);
     }
   }
   
-  // 如果 metadata 没有 tool_calls，尝试从 content 解析
   if (toolCalls.length === 0) {
-    const parsed = parseMessageContent(m.content);
+    const parsed = parseMessageContent(m.content || '');
     toolCalls = parsed.toolCalls;
     textParts = parsed.textParts;
   } else {
-    // 有 tool_calls 时，textParts 直接从 content 提取（不包含 tool_use 标记）
     textParts = m.content ? [m.content] : [];
   }
 
-  // 工具调用消息
-  if (toolCalls.length > 0) {
-    return (
+  const isUser = m.role === 'user';
+  const senderName = isUser ? '用户' : (m.agent_name || 'Agent');
+  const avatar = getAvatarStyle(senderName);
+
+  return (
+    <div className={`chat-msg-container ${isUser ? 'user' : 'assistant'}`}>
+      <div className="chat-msg-header">
+        <span className="msg-sender">{senderName}</span>
+        <span className="msg-time">{formatMessageTime(m.created_at)}</span>
+      </div>
+      <div 
+        className={`chat-msg-avatar ${isUser ? 'user' : 'assistant'}`}
+        style={!isUser ? { backgroundColor: avatar.backgroundColor } : {}}
+      >
+        {isUser ? '👤' : avatar.initial}
+      </div>
       <div className={`chat-msg chat-msg-${m.role || 'assistant'}`}>
-        <span className="chat-msg-role">
-          {m.role === 'user' ? '用户' : `@${m.agent_name || 'Agent'}`}
-        </span>
         <div className="chat-msg-content markdown-content">
-          <ToolUseMessage toolCalls={toolCalls} />
+          {toolCalls.length > 0 && <ToolUseMessage toolCalls={toolCalls} />}
           {textParts.map((text, idx) => (
             <MarkdownRenderer key={idx} content={text} />
           ))}
+          {toolCalls.length === 0 && textParts.length === 0 && (
+            <MarkdownRenderer content={m.content || ''} />
+          )}
         </div>
-      </div>
-    );
-  }
-
-  // 普通消息
-  return (
-    <div className={`chat-msg chat-msg-${m.role || 'assistant'}`}>
-      <span className="chat-msg-role">
-        {m.role === 'user' ? '用户' : `@${m.agent_name || 'Agent'}`}
-      </span>
-      <div className="chat-msg-content markdown-content">
-        <MarkdownRenderer content={m.content ?? ''} />
       </div>
     </div>
   );
 });
 
 function StreamingMessage({ content, agentName, toolCalls: externalToolCalls }) {
-  const { toolCalls: parsedToolCalls, textParts } = parseMessageContent(content);
+  const { toolCalls: parsedToolCalls, textParts } = parseMessageContent(content || '');
   const toolCalls = externalToolCalls && externalToolCalls.length > 0 ? externalToolCalls : parsedToolCalls;
-  
+  const avatar = getAvatarStyle(agentName);
+
   return (
-    <div className="chat-msg chat-msg-assistant">
-      <span className="chat-msg-role">@{agentName}</span>
-      <div className="chat-msg-content chat-msg-streaming">
-        {toolCalls.length > 0 && (
-          <ToolUseMessage toolCalls={toolCalls} />
-        )}
-        {textParts.map((text, idx) => (
-          <MarkdownRenderer key={idx} content={text} />
-        ))}
-        {toolCalls.length === 0 && textParts.length === 0 && (
-          <MarkdownRenderer content={content} />
-        )}
+    <div className="chat-msg-container assistant">
+      <div className="chat-msg-header">
+        <span className="msg-sender">{agentName}</span>
+        <span className="msg-time">正在输入...</span>
+      </div>
+      <div className="chat-msg-avatar assistant" style={{ backgroundColor: avatar.backgroundColor }}>
+        {avatar.initial}
+      </div>
+      <div className="chat-msg chat-msg-assistant">
+        <div className="chat-msg-content chat-msg-streaming">
+          {toolCalls.length > 0 && <ToolUseMessage toolCalls={toolCalls} />}
+          {textParts.map((text, idx) => (
+            <MarkdownRenderer key={idx} content={text} />
+          ))}
+          {toolCalls.length === 0 && textParts.length === 0 && (
+            <MarkdownRenderer content={content || ''} />
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 export default function ChatPanel({
-  agents,
-  selectedTaskId,
-  wsReady,
-  runningAgentIds,
-  streamingContent,
-  streamingToolCalls,
-  streamingAgentId,
-  onStart,
-  onStop,
-  onSendText,
-  currentConversation,
+  agents, selectedTaskId, wsReady, runningAgentIds, streamingContent, streamingToolCalls, streamingAgentId, onStart, onStop, onSendText, currentConversation,
 }) {
   const [input, setInput] = useState('');
   const [mentionState, setMentionState] = useState({ active: false, query: '', start: 0, selectedIndex: 0 });
@@ -130,6 +136,14 @@ export default function ChatPanel({
   );
 
   useEffect(() => {
+    // Periodically refresh messages to ensure UI reflects latest chat content
+    const interval = setInterval(() => {
+      refetch();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [refetch]);
+
+  useEffect(() => {
     if (prevStreamingRef.current && !streamingContent) {
       refetch();
     }
@@ -141,11 +155,13 @@ export default function ChatPanel({
   }, [messages, streamingContent]);
 
   const parseTargetAgent = useCallback((text) => {
-    if (!text.startsWith('@')) {
+    // Find the last '@' to support mentions anywhere in the text
+    const atIdx = text.lastIndexOf('@');
+    if (atIdx === -1) {
       return null;
     }
-
-    const textWithoutAt = text.slice(1);
+    const beforeMention = text.slice(0, atIdx).trim();
+    const textWithoutAt = text.slice(atIdx + 1);
 
     for (const agent of sortedAgents) {
       const nameLower = agent.name.toLowerCase();
@@ -154,9 +170,12 @@ export default function ChatPanel({
       if (textLower.startsWith(nameLower)) {
         const afterName = textWithoutAt.slice(agent.name.length);
         if (afterName === '' || afterName.startsWith(' ')) {
+          // Combine text before @ and text after agent name
+          const afterText = afterName.trimStart();
+          const combined = [beforeMention, afterText].filter(Boolean).join(' ');
           return {
             agent,
-            textWithoutMention: afterName.trimStart(),
+            textWithoutMention: combined,
           };
         }
       }
@@ -170,72 +189,26 @@ export default function ChatPanel({
     const cursorPos = e.target.selectionStart;
     setInput(value);
 
-    const textBeforeCursor = value.slice(0, cursorPos);
-    const atIndex = textBeforeCursor.lastIndexOf('@');
+    const textBefore = value.slice(0, cursorPos);
+    const atIdx = textBefore.lastIndexOf('@');
 
-    if (atIndex !== -1) {
-      const textAfterAt = textBeforeCursor.slice(atIndex + 1);
-      const hasSpace = textAfterAt.includes(' ');
-
-      if (!hasSpace) {
-        setMentionState({
-          active: true,
-          query: textAfterAt,
-          start: atIndex,
-          selectedIndex: 0,
-        });
+    if (atIdx !== -1) {
+      const query = textBefore.slice(atIdx + 1);
+      // 如果 query 中包含空格，则关闭弹出框
+      if (!query.includes(' ')) {
+        setMentionState({ active: true, query, start: atIdx, selectedIndex: 0 });
         return;
       }
     }
-    setMentionState((s) => ({ ...s, active: false }));
+    setMentionState(s => ({ ...s, active: false }));
   };
 
   const selectMention = (agent) => {
     const before = input.slice(0, mentionState.start);
     const after = input.slice(inputRef.current.selectionStart);
-    const newText = `${before}@${agent.name} ${after}`;
-    setInput(newText);
-    setMentionState((s) => ({ ...s, active: false }));
-    setTimeout(() => {
-      const newPos = before.length + agent.name.length + 2;
-      inputRef.current?.setSelectionRange(newPos, newPos);
-      inputRef.current?.focus();
-    }, 0);
-  };
-
-  const handleKeyDown = (e) => {
-    if (mentionState.active && filteredAgents.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setMentionState((s) => ({
-          ...s,
-          selectedIndex: (s.selectedIndex + 1) % filteredAgents.length,
-        }));
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setMentionState((s) => ({
-          ...s,
-          selectedIndex: s.selectedIndex === 0 ? filteredAgents.length - 1 : s.selectedIndex - 1,
-        }));
-        return;
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault();
-        selectMention(filteredAgents[mentionState.selectedIndex]);
-        return;
-      }
-      if (e.key === 'Escape') {
-        setMentionState((s) => ({ ...s, active: false }));
-        return;
-      }
-    }
-
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
+    setInput(`${before}@${agent.name} ${after}`);
+    setMentionState(s => ({ ...s, active: false }));
+    inputRef.current?.focus();
   };
 
   const send = async () => {
@@ -309,14 +282,7 @@ export default function ChatPanel({
     }
   };
 
-  const stopAgent = useCallback((agentId) => {
-    onStop(agentId);
-  }, [onStop]);
-
-  const streamingAgent = useMemo(
-    () => streamingAgentId ? agents.find((a) => a.id === streamingAgentId) : null,
-    [streamingAgentId, agents]
-  );
+  const streamingAgent = useMemo(() => streamingAgentId ? agents.find(a => a.id === streamingAgentId) : null, [streamingAgentId, agents]);
 
   return (
     <div className="chat-panel">
@@ -354,8 +320,8 @@ export default function ChatPanel({
             <>
               {truncated && (
                 <div className="chat-msg-truncated" onClick={refetch}>
-                  已隐藏 {allMessages.length - VISIBLE_MESSAGE_LIMIT} 条早期消息，点击加载更多
-                </div>
+                已隐藏 {allMessages.length - VISIBLE_MESSAGE_LIMIT} 条早期消息，点击加载更多
+              </div>
               )}
               {visibleMessages.map((m) => (
                 <ChatMessage key={m.id} m={m} />
@@ -379,65 +345,70 @@ export default function ChatPanel({
             className="chat-input"
             value={input}
             onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              currentConversation 
-                ? "输入消息，使用 @AgentName 调用 Agent..." 
-                : "请先选择或创建一个对话"
-            }
+            onKeyDown={(e) => {
+              if (mentionState.active && filteredAgents.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setMentionState((s) => ({
+                    ...s,
+                    selectedIndex: (s.selectedIndex + 1) % filteredAgents.length,
+                  }));
+                  return;
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setMentionState((s) => ({
+                    ...s,
+                    selectedIndex: s.selectedIndex === 0 ? filteredAgents.length - 1 : s.selectedIndex - 1,
+                  }));
+                  return;
+                }
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault();
+                  selectMention(filteredAgents[mentionState.selectedIndex]);
+                  return;
+                }
+                if (e.key === 'Escape') {
+                  setMentionState((s) => ({ ...s, active: false }));
+                  return;
+                }
+              }
+
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            placeholder={currentConversation ? "输入消息，使用 @ 唤起列表..." : "请先选择对话"}
             rows={2}
             disabled={!wsReady || !currentConversation}
           />
-          {mentionState.active && filteredAgents.length > 0 && (
+          {mentionState.active && (
             <div className="mention-dropdown">
-              {filteredAgents.map((agent, index) => (
-                <div
-                  key={agent.id}
-                  className={`mention-item ${index === mentionState.selectedIndex ? 'selected' : ''}`}
-                  onClick={() => selectMention(agent)}
-                  onMouseEnter={() => setMentionState((s) => ({ ...s, selectedIndex: index }))}
+              {filteredAgents.length > 0 ? filteredAgents.map((a, i) => (
+                <div 
+                  key={a.id} 
+                  className={`mention-item ${i === mentionState.selectedIndex ? 'selected' : ''}`}
+                  onClick={() => selectMention(a)}
                 >
-                  <span className="mention-item-avatar">@</span>
-                  <span className="mention-item-name">{agent.name}</span>
-                  {runningAgentIds.includes(agent.id) && (
-                    <span className="mention-item-status">运行中</span>
-                  )}
+                  <span className="mention-avatar" style={{ backgroundColor: getAvatarStyle(a.name).backgroundColor }}>
+                    {a.name[0]}
+                  </span>
+                  <span className="mention-name">@{a.name}</span>
                 </div>
-              ))}
-            </div>
-          )}
-          {mentionState.active && filteredAgents.length === 0 && mentionState.query && (
-            <div className="mention-dropdown mention-empty">
-              无匹配的 Agent
+              )) : <div className="mention-empty">无匹配的 Agent</div>}
             </div>
           )}
         </div>
         <div className="chat-input-actions">
-          {runningAgentIds.length > 0 ? (
+          <button className="btn btn-primary" onClick={send} disabled={!input.trim()}>发送</button>
+          {runningAgentIds.length > 0 && (
             <div className="running-agents-actions">
-              {runningAgentIds.map((id) => {
-                const agent = agents.find((a) => a.id === id);
-                return agent ? (
-                  <button
-                    key={id}
-                    type="button"
-                    className="btn btn-danger btn-sm"
-                    onClick={() => stopAgent(id)}
-                  >
-                    停止 @{agent.name}
-                  </button>
-                ) : null;
+              {runningAgentIds.map(id => {
+                const agent = agents.find(a => a.id === id);
+                return agent && <button key={id} className="btn btn-danger btn-sm" onClick={() => onStop(id)}>停止 @{agent.name}</button>;
               })}
             </div>
-          ) : (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={send}
-              disabled={!input.trim() || !wsReady}
-            >
-              发送
-            </button>
           )}
         </div>
       </div>

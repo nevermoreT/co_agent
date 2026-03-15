@@ -2,6 +2,7 @@ import initSqlJs from 'sql.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import fs from 'fs';
+import logger from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, '..', 'data');
@@ -32,6 +33,8 @@ db.exec(`
     name TEXT NOT NULL,
     cli_command TEXT NOT NULL,
     cli_cwd TEXT,
+    builtin_key TEXT,
+    session_id TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   );
 
@@ -128,11 +131,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_agent_sessions_task ON agent_sessions(task_id);
 `);
 
+// Phase 4.2: A2A Tasks 表扩展 - 仅当 conversation_id 不存在时添加
 try {
-  db.run('ALTER TABLE agents ADD COLUMN builtin_key TEXT');
-  save();
-} catch {
-  // column already exists
+  const info = db.exec('PRAGMA table_info(a2a_tasks)');
+  const columns = (info[0]?.values || []).map((row) => row[1]);
+  if (columns.length > 0 && !columns.includes('conversation_id')) {
+    db.exec(`ALTER TABLE a2a_tasks ADD COLUMN conversation_id INTEGER`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_a2a_tasks_conversation ON a2a_tasks(conversation_id)`);
+    logger.log('[DB] A2a_tasks table schema updated');
+  }
+} catch (error) {
+  logger.error('[DB] Failed to update a2a_tasks table schema:', error);
 }
 
 try {
@@ -203,6 +212,22 @@ try {
 // Phase 3.2: Agent Soul 配置字段
 try {
   db.run('ALTER TABLE agents ADD COLUMN soul TEXT DEFAULT "{}"');
+  save();
+} catch {
+  // column already exists
+}
+
+// A2A: agents 状态（用于 /.well-known/agent.json 等）
+try {
+  db.run("ALTER TABLE agents ADD COLUMN status TEXT DEFAULT 'active'");
+  save();
+} catch {
+  // column already exists
+}
+
+// builtin_key for seeding built-in agents
+try {
+  db.run('ALTER TABLE agents ADD COLUMN builtin_key TEXT');
   save();
 } catch {
   // column already exists

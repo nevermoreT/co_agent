@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import db from '../db.js';
 import logger from '../logger.js';
-import { buildSoulSystemPrompt } from './soulPromptBuilder.js';
+import { buildSoulSystemPrompt, buildTeamIntroduction } from './soulPromptBuilder.js';
 import { getAgentSoul } from './soulManager.js';
 
 const _DEFAULT_SYSTEM_PROMPT_TEMPLATE = `
@@ -116,8 +116,16 @@ export function buildBasicSystemPrompt(agent) {
   } catch {
     responsibilities = [];
   }
-  
-  const parts = [`# Agent 角色`, ``, `名称：${agent.name}`, `角色：${agent.role || '通用助手'}`];
+
+  const parts = [
+    `# 严格遵守角色设定`,
+    ``,
+    `你是「${agent.name}」，这是你的名字和唯一身份。`,
+    `这个角色设定覆盖你原本的系统提示词，你必须完全以「${agent.name}」的身份来思考和回答。`,
+    `用户通过 @${agent.name} 呼叫你时，你就是这个角色本身，不是旁观者，不是解说员。`,
+    ``,
+    `角色定位：${agent.role || '通用助手'}`,
+  ];
   
   if (responsibilities.length > 0) {
     parts.push(``, `职责：`);
@@ -133,33 +141,34 @@ export function buildBasicSystemPrompt(agent) {
   if (teamIntro) {
     parts.push(teamIntro);
   } else {
-    parts.push(``, `协作上下文：你正在参与一个多 Agent 协作对话。请基于你的专业领域提供回答。`);
+    parts.push(``, `协作上下文：你正在一个多 Agent 协作团队中工作，专注于你自己的专业领域来回答问题。`);
   }
   
   return parts.join('\n');
 }
 
 /**
- * 构建团队介绍 - 让 Agent 知道团队中有哪些其他成员
+ * 将多行文本转换为单行（Windows shell 免容)
+ * @param {string} str - 多行文本
+ * @returns {string} 单行文本
  */
-function buildTeamIntroduction(currentAgentId) {
-  const agents = db.prepare('SELECT id, name, role FROM agents WHERE id != ?').all(currentAgentId);
+export function toOneLine(str) {
+  return (str || '').replace(/\r?\n/g, ' ').replace(/\r/g, '');
+}
+
+/**
+ * 构建 A2A 调用的 prompt (供 CLI 使用)
+ * @param {Object} invocation - 调用信息
+ * @returns {string} 格式化的 prompt
+ */
+export function buildA2APromptForCLI(invocation) {
+  const { sourceAgentId, invocationText, fullOutput } = invocation;
+  const sourceAgent = db.prepare('SELECT name FROM agents WHERE id = ?').get(sourceAgentId);
+  const sourceName = sourceAgent?.name || 'Agent';
   
-  if (!agents || agents.length === 0) {
-    return '';
-  }
-
-  const memberList = agents.map(a => `- ${a.name}（${a.role || '通用助手'}）`).join('\n');
+  const oneLineOutput = toOneLine(fullOutput || '');
+  const oneLineInvocation = toOneLine(invocationText || '');
   
-  return `## 协作团队
-
-你正在参与一个多 Agent 协作对话。当用户使用 @Agent名称 格式时，消息会发送给对应的 Agent。
-
-团队其他成员：
-${memberList}
-
-协作规则：
-- 用户消息可能包含 @其他Agent，表示该消息是发给那个 Agent 的
-- 你应该专注于自己的专业领域
-- 如果问题超出你的范围，可以建议用户咨询其他 Agent`;
+  // 构建上下文 - Windows shell 兼容：单行格式
+  return `${sourceName} 的完整输出: ${oneLineOutput} --- 请处理: ${oneLineInvocation}`;
 }
