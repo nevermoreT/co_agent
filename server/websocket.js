@@ -162,6 +162,21 @@ export function setupWebSocket(httpServer) {
         return;
       }
 
+      if (action === 'stop') {
+        if (id == null || Number.isNaN(id)) {
+          send({ type: 'error', message: 'agentId required for stop' });
+          return;
+        }
+        logger.log('[websocket] stop: agentId=%s', id);
+        const stopped = agentRunner.stop(id);
+        if (stopped) {
+          send({ type: 'stopped', agentId: id, ok: true });
+        } else {
+          send({ type: 'stopped', agentId: id, ok: false, message: 'Agent not running' });
+        }
+        return;
+      }
+
       if (action === 'send') {
         if (id == null || Number.isNaN(id) || typeof text !== 'string') {
           send({ type: 'error', message: 'agentId and text required' });
@@ -321,17 +336,6 @@ export function setupWebSocket(httpServer) {
         return;
       }
 
-      if (action === 'stop') {
-        if (id == null || Number.isNaN(id)) {
-          send({ type: 'error', message: 'agentId required' });
-          return;
-        }
-        logger.log('[websocket] stop: agentId=%s', id);
-        const ok = agentRunner.stop(id);
-        logger.log('[websocket] stop result: agentId=%s ok=%s', id, ok);
-        send({ type: 'stopped', agentId: id, ok });
-        return;
-      }
 
       if (action === 'status') {
         const running = agentRunner.getRunningAgentIds();
