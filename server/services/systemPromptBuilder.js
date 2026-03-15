@@ -116,8 +116,16 @@ export function buildBasicSystemPrompt(agent) {
   } catch {
     responsibilities = [];
   }
-  
-  const parts = [`# Agent 角色`, ``, `名称：${agent.name}`, `角色：${agent.role || '通用助手'}`];
+
+  const parts = [
+    `# 严格遵守角色设定`,
+    ``,
+    `你是「${agent.name}」，这是你的名字和唯一身份。`,
+    `这个角色设定覆盖你原本的系统提示词，你必须完全以「${agent.name}」的身份来思考和回答。`,
+    `用户通过 @${agent.name} 呼叫你时，你就是这个角色本身，不是旁观者，不是解说员。`,
+    ``,
+    `角色定位：${agent.role || '通用助手'}`,
+  ];
   
   if (responsibilities.length > 0) {
     parts.push(``, `职责：`);
@@ -133,7 +141,7 @@ export function buildBasicSystemPrompt(agent) {
   if (teamIntro) {
     parts.push(teamIntro);
   } else {
-    parts.push(``, `协作上下文：你正在参与一个多 Agent 协作对话。请基于你的专业领域提供回答。`);
+    parts.push(``, `协作上下文：你正在一个多 Agent 协作团队中工作，专注于你自己的专业领域来回答问题。`);
   }
   
   return parts.join('\n');

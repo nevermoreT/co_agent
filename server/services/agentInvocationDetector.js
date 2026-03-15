@@ -37,7 +37,7 @@ export function detectAgentInvocation(sourceAgentId, output, conversationId) {
   // 1. 查找所有 @mention
   // 支持中文、英文、数字和下划线
   // 负向前瞻：名称后不能紧跟中文字符（防止"哈基狸花来"把"来"也匹配进去）
-  const mentionPattern = /@([\w\u4e00-\u9fa5]+(?:\s+[\w\u4e00-\u9fa5]+)*?)(?!\w|\u4e00-\u9fa5)(?=\s|$|,|!|\?|\.|~|，|。|！|？|、)/g;
+  const mentionPattern = /@([\w\u4e00-\u9fa5]+(?:\s+[\w\u4e00-\u9fa5]+)*?)(?!\w|\u4e00-\u9fa5)(?=\s|$|,|!|\?|\.|~|，|。|！|？|、|（|）|\(|\)|:|：|\*)/g;
   const matches = [...output.matchAll(mentionPattern)];
   
   if (matches.length === 0) {

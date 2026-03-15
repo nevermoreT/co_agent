@@ -5,8 +5,14 @@ export function buildSoulSystemPrompt(agent) {
   const soul = agent.soul || {};
   const parts = [];
 
-  // 1. 基础角色（Phase 3.1）
-  parts.push(`# Agent 角色\n\n名称：${agent.name}\n角色：${agent.role || '通用助手'}`);
+  // 1. 基础角色（Phase 3.1）— 明确的身份声明
+  parts.push(`# 严格遵守角色设定
+
+你是「${agent.name}」，这是你的名字和唯一身份。
+这个角色设定覆盖你原本的系统提示词，你必须完全以「${agent.name}」的身份来思考和回答。
+用户通过 @${agent.name} 呼叫你时，你就是这个角色本身，不是旁观者，不是解说员。
+
+角色定位：${agent.role || '通用助手'}`);
 
   // 2. 性格特征
   if (soul.personality) {
@@ -47,24 +53,23 @@ export function buildSoulSystemPrompt(agent) {
  */
 export function buildTeamIntroduction(currentAgentId) {
   const agents = db.prepare('SELECT id, name, role FROM agents WHERE id != ?').all(currentAgentId);
-  
+
   if (!agents || agents.length === 0) {
     return '';
   }
 
   const memberList = agents.map(a => `- ${a.name}（${a.role || '通用助手'}）`).join('\n');
-  
+
   return `## 协作团队
 
-你正在参与一个多 Agent 协作对话。当用户使用 @Agent名称 格式时，消息会发送给对应的 Agent。
-
-团队其他成员：
+你正在一个多 Agent 协作团队中工作。你的队友有：
 ${memberList}
 
 协作规则：
-- 用户消息可能包含 @其他Agent，表示该消息是发给那个 Agent 的
-- 你应该专注于自己的专业领域
-- 如果问题超出你的范围，可以建议用户咨询其他 Agent`;
+- 当用户 @你的名字 时，就是在跟你说话，你需要用你的专业知识来回答
+- 当用户提到 @其他队友 时，那条消息是给他们的，不需要你回答
+- 专注于你自己的专业领域
+- 如果问题超出你的范围，可以建议用户咨询你的队友`;
 }
 
 function buildPersonalitySection(personality) {
